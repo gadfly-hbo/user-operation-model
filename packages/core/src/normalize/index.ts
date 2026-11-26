@@ -94,7 +94,7 @@ export function normalizeDouyinPortrait(
       kind: 'parse-error',
       platform: 'douyin',
       severity: 'error',
-      message: `有 ${unparsable} 行的占比与 TGI 均无法解析为数值，已跳过`,
+      message: `有 ${unparsable} 行的占比无法解析为数值，已跳过`,
     });
   }
 
@@ -250,7 +250,7 @@ export async function normalizeJdPortrait(
       kind: 'parse-error',
       platform: 'jd',
       severity: 'error',
-      message: `有 ${unparsable} 行的占比与 TGI 均无法解析为数值，已跳过`,
+      message: `有 ${unparsable} 行的占比无法解析为数值，已跳过`,
     });
   }
 

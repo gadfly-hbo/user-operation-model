@@ -17,7 +17,8 @@ export async function readXlsxRows(path: string, sheetName?: string): Promise<st
   try {
     await workbook.xlsx.readFile(path);
   } catch (error) {
-    // 文件不存在是调用方问题，保留 ENOENT 语义，不包装成解析错误
+    // 兜底分支：上方的 existsSync 守卫已先拦截文件不存在，
+    // 但若底层库未来抛出可识别的 ENOENT，仍保留其原始语义而非包装成解析错误。
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw error;
     throw new NormalizationError(
       'parse-error',

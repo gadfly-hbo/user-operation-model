@@ -484,6 +484,7 @@ describe('复核补强：错误路径覆盖矩阵补全', () => {
     const issue = portrait.issues?.find((i) => i.kind === 'parse-error');
     assert.ok(issue, '应记录 parse-error 问题');
     assert.equal(issue.severity, 'error');
+    assert.equal(portrait.projections.gender?.labels['男'], undefined, '坏行不应出现在投影中');
     assert.ok(
       Math.abs((portrait.projections.gender?.labels['女']?.share ?? 0) - 0.6) < 1e-9,
       '可解析的行应正常投影',
@@ -563,6 +564,7 @@ describe('第四轮补强：错误类型与 kind 的完整断言', () => {
     const issue = portrait.issues?.find((i) => i.kind === 'parse-error');
     assert.ok(issue);
     assert.equal(issue.severity, 'error');
+    assert.equal(portrait.projections.gender?.labels['女'], undefined, '坏行不应出现在投影中');
   });
 
   test('京东：部分行不可解析时记 error 级 parse-error', async () => {
@@ -574,6 +576,7 @@ describe('第四轮补强：错误类型与 kind 的完整断言', () => {
     const issue = portrait.issues?.find((i) => i.kind === 'parse-error');
     assert.ok(issue);
     assert.equal(issue.severity, 'error');
+    assert.equal(portrait.projections.gender?.labels['女'], undefined, '坏行不应出现在投影中');
   });
 
   test('商品表：空表抛 parse-error', async () => {
