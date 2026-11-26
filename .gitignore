@@ -1,5 +1,7 @@
 # 业务原始数据与归一化产物一律不上云（见讨论稿 §1 硬约束）
-data/
+# 仅放行 data/README.md（放置说明与时间范围声明）
+data/*
+!data/README.md
 raw/
 *.xlsx
 *.xls

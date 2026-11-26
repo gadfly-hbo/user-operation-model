@@ -16,6 +16,9 @@ ALLOWED_DATA_SUFFIXES = {".csv", ".xlsx", ".xls"}
 # 业务数据常见落点，出现在索引中即视为违规
 FORBIDDEN_DIRS = {"data", "raw", "mlruns", "mlflow-artifacts", ".local"}
 
+# 业务数据目录内允许入库的说明文件（不含任何数据）
+ALLOWED_IN_DATA = {("data", "README.md")}
+
 # 单文件大小上限（字节）
 MAX_FILE_BYTES = 5 * 1024 * 1024
 
@@ -34,6 +37,9 @@ def main() -> int:
     for path in tracked_files():
         parts = Path(path).parts
         suffix = Path(path).suffix.lower()
+
+        if parts[:2] in ALLOWED_IN_DATA or parts in ALLOWED_IN_DATA:
+            continue
 
         for forbidden in FORBIDDEN_DIRS:
             if forbidden in parts:
