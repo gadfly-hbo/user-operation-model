@@ -1,0 +1,40 @@
+# 业务原始数据与归一化产物一律不上云（见讨论稿 §1 硬约束）
+data/
+raw/
+*.xlsx
+*.xls
+*.csv
+
+# 例外：脱敏后的测试 fixture 允许进仓库
+!fixtures/
+!fixtures/**/*.csv
+!fixtures/**/*.xlsx
+
+# MLflow 本地账本与工件库
+workspace/mlflow/
+mlruns/
+mlflow-artifacts/
+mlflow.db
+
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# 环境与本地配置
+.env
+.env.*
+!.env.example
+*.local
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
+
+# Python（工具2 训练管线）
+__pycache__/
+*.py[cod]
+.venv/
+venv/
