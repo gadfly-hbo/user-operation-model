@@ -121,12 +121,24 @@
 | 类型检查 + 构建 | `npm run build` | PASS，无错误 |
 | 单元测试 | `npm run test` | PASS，**159 例**全过（core 128 + data-mcp 31），0 失败 0 跳过 |
 | 依赖审计 | `npm audit --audit-level=high` | PASS，**0 vulnerabilities**（`overrides` 将 uuid 提至 11.1.1） |
-| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | PASS，**57 条**相对链接无错误 |
+| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | PASS，**59 条**相对链接无错误 |
 | 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | PASS |
 | NUL 字节扫描 | 全仓库 `*.ts` / `*.json` / `*.md` | PASS，0 残留 |
 | 真实数据端到端 | 见下 | PASS |
 | MCP 真实 stdio 路径 | `packages/data-mcp/test/stdio.test.ts` | PASS，真实 spawn 子进程完成 initialize 与工具调用 |
 | 断网验证 | —— | **NOT_RUN**，未在断网环境实跑（server 为纯 stdio 本地进程，零网络依赖） |
+
+> **本文数字的复核方式**：本文引用的条数（链接数、用例数、索引规模）会随内容变动而漂移，**以命令输出为准**。改动后请重新执行并核对：
+>
+> | 数字 | 复核命令 |
+> | --- | --- |
+> | 文档链接条数 | `python3 .github/scripts/check-docs-links.py .` |
+> | 用例数 | `npm run test`（分包：`node --test "packages/<pkg>/dist/test/**/*.test.js"`） |
+> | 索引规模 | `node --input-type=module -e "import {buildIndex} from './packages/core/dist/src/index.js'; const i=await buildIndex({dataRoot:'data'}); console.log(i.products.length, i.channels.length, i.portraits.length)"` |
+>
+> **两类漂移的根因（均已发生，本项目记录在案）**：
+> 1. **「想改没改成」** —— 修复脚本用 `s.replace()` 后无条件报成功，锚点串不存在时替换是空操作。至少造成 4 次「声称已做」。本轮起每处替换都断言命中，未命中即退出并逐项 `grep` 复核。
+> 2. **「改到了但没同步」** —— 改完文档后没有重算依赖它的数字（链接数、用例数、索引规模），台账与实际漂移。**根因是 CI 只校验链接可达性、不校验台账数字**，同类漂移因此连续两轮复发。故本文数字一律标注复核命令，不作为独立事实来源。
 | 独立复核 | 见 §5 | 两轮完成 |
 
 ### 真实数据端到端结果
@@ -361,9 +373,9 @@
 | --- | --- | --- |
 | 1 | PASS：spec 五处（§1 目标、DM07、§5、§6.1、§8）均为 17；讨论稿／spec／`TOOL_NAMES`／真实 `tools/list` 四方集合全等 | 无需再改 |
 | **2** | FAIL：「源数据未提供」**只写在 result.md**，规则文档全文 0 命中样本量／覆盖率。复核者查 `git show 9df255a` 的 diff 证实 §7.2 **未被改动** —— 作者 commit message 与 result.md 台账**把未做的改动记成已做** | 规则文档 §7.2 补「画像无样本量／覆盖率 → 相应键为 undefined，不补默认值」；result.md 台账改为如实标注「第四轮复核时补上——第三轮声称已补，实际替换未生效」 |
-| 3 | PASS（主项）：索引 334／唯一款号 334／渠道 200／画像 7／conflict 123（= 113 SKU 级 + 10 跨表）／链接 57／用例 159／334 款隔离泄漏 0 | 分包拆分更正为 core 128 + data-mcp 31；台账链接数同步 |
+| 3 | PASS（主项）：索引 334／唯一款号 334／渠道 200／画像 7／conflict 123（= 113 SKU 级 + 10 跨表）／链接数／用例数／334 款隔离泄漏 0 | 分包拆分更正为 core 128 + data-mcp 31；台账链接数同步（见下方「本文数字的复核方式」） |
 | 4 | PASS：§2.3 两级清理已入档、§2.4 如实说明「别名目录尚未建立」；真实数据实测合法门店名原样保留 | 三处精度缺口一并修：级别 1 改为「任意位置」而非「末段」、噪声词表补 `人群数据`、§2.2 去掉与 §2.3 重复的句子 |
-| 附 | R11 用例**实际未锁住**：fixture 目录是中文名，旧实现的英文目录正则永不命中，新旧行为恒等 | fixture 改用英文目录 `douyin/` 放天猫文件，构造「目录说抖音、文件名说天猫」的场景；复验后 R11 变异 **KILLED（27 例失败）** |
+| 附 | R11 用例**实际未锁住**：fixture 目录是中文名，旧实现的英文目录正则永不命中，新旧行为恒等 | fixture 改用英文目录 `douyin/` 放天猫文件，构造「目录说抖音、文件名说天猫」的场景；复验后 R11 变异 **KILLED（该测试文件 27 例中 20 例失败）** |
 | 附 | M4 守卫是**键名字面匹配**，换名即失效 | 改为结构白名单；复验「实现侧新增 `matchScore`／`rating`」→ **KILLED** |
 | 附 | 新 R12 用例注释有数学错误（左侧集合大小是 1 不是 2） | 注释更正，并说明该口径无法用本例区分 |
 
