@@ -3,6 +3,7 @@ import { BandResolver, DimensionRegistry, MappingTable } from '../portrait/regis
 import { parseCsvRows } from './csv.js';
 import { parseFileNameEntity, parsePortraitEntityId } from './identity.js';
 import { projectPortraitLabels, type ProjectContext } from './project.js';
+import { NormalizationError } from './types.js';
 import type {
   ChannelNormalizationResult,
   ChannelRecord,
@@ -44,11 +45,19 @@ export function normalizeDouyinPortrait(
   ctx: ProjectContext = defaultProjectContext(),
 ): NormalizedPortrait {
   const rows = parseCsvRows(path);
-  if (rows.length < 2) return emptyPortrait(options);
+  if (rows.length === 0) {
+    throw new NormalizationError('parse-error', '抖音画像文件为空或无法解析', path);
+  }
+  if (rows.length < 2) {
+    throw new NormalizationError('parse-error', '抖音画像文件只有表头，没有数据行', path);
+  }
 
   const header = rows[0] ?? [];
   const shareColumn = header.findIndex((cell) => cell.trim().endsWith('-占比'));
   const tgiColumn = header.findIndex((cell) => cell.trim().endsWith('-tgi'));
+  if (shareColumn === -1) {
+    throw new NormalizationError('missing-field', '抖音画像缺少「…-占比」列', path);
+  }
 
   const identifier = shareColumn >= 0 ? header[shareColumn]!.trim() : '';
   const parsedIdentifier = parsePortraitEntityId(identifier);
@@ -83,7 +92,13 @@ export async function normalizeTmallPortrait(
   ctx: ProjectContext = defaultProjectContext(),
 ): Promise<NormalizedPortrait> {
   const rows = await readXlsxRows(path, '明细');
+  if (rows.length === 0) {
+    throw new NormalizationError('parse-error', '天猫画像文件为空、sheet「明细」不存在或无数据行', path);
+  }
   const headerIndex = findHeaderRow(rows, ['标签类型']);
+  if (headerIndex === -1) {
+    throw new NormalizationError('missing-field', '天猫画像缺少「标签类型」列', path);
+  }
   const header = rows[headerIndex] ?? [];
   const dimensionIndex = header.findIndex((c) => c.trim() === '标签类型');
   // 标签列必须排除维度列本身：「标签类型」本身也包含「标签」二字
@@ -91,6 +106,13 @@ export async function normalizeTmallPortrait(
     (c, i) => i !== dimensionIndex && c.trim().includes('标签'),
   );
   const shareIndex = header.findIndex((c) => c.trim() === '占比');
+  if (dimensionIndex === -1 || labelIndex === -1 || shareIndex === -1) {
+    throw new NormalizationError(
+      'missing-field',
+      `天猫画像缺少必要列（维度列=${dimensionIndex} 标签列=${labelIndex} 占比列=${shareIndex}）`,
+      path,
+    );
+  }
 
   const platformLabels: Record<string, Record<string, PortraitLabel>> = {};
   for (const row of rows.slice(headerIndex + 1)) {
@@ -122,12 +144,25 @@ export async function normalizeJdPortrait(
   ctx: ProjectContext = defaultProjectContext(),
 ): Promise<NormalizedPortrait> {
   const rows = await readXlsxRows(path, 'Sheet0');
+  if (rows.length === 0) {
+    throw new NormalizationError('parse-error', '京东画像文件为空、sheet「Sheet0」不存在或无数据行', path);
+  }
   const headerIndex = findHeaderRow(rows, ['标签名']);
+  if (headerIndex === -1) {
+    throw new NormalizationError('missing-field', '京东画像缺少「标签名」列', path);
+  }
   const header = rows[headerIndex] ?? [];
   const dimensionIndex = header.findIndex((c) => c.trim() === '标签名');
   const labelIndex = header.findIndex((c) => c.trim() === '枚举值');
   const shareIndex = header.findIndex((c) => c.trim() === '占比');
   const tgiIndex = header.findIndex((c) => c.trim() === 'TGI');
+  if (dimensionIndex === -1 || labelIndex === -1 || shareIndex === -1) {
+    throw new NormalizationError(
+      'missing-field',
+      `京东画像缺少必要列（维度列=${dimensionIndex} 枚举列=${labelIndex} 占比列=${shareIndex}）`,
+      path,
+    );
+  }
 
   const platformLabels: Record<string, Record<string, PortraitLabel>> = {};
   for (const row of rows.slice(headerIndex + 1)) {
@@ -166,17 +201,6 @@ function finalizePortrait(
     platformLabels: { [platform]: platformLabels },
     projections,
     issues,
-  };
-}
-
-function emptyPortrait(options: NormalizeOptions): NormalizedPortrait {
-  return {
-    entityType: options.entityType ?? 'channel',
-    entityId: options.entityId ?? '',
-    month: options.month ?? '',
-    platformLabels: {},
-    projections: {},
-    issues: [],
   };
 }
 

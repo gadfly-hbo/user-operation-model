@@ -7,7 +7,7 @@ import type {
 } from './types.js';
 import { DIMENSIONS } from './catalog/dimensions.js';
 import { TAG_MAPPINGS } from './catalog/mappings.js';
-import { AGE_BAND_RULES } from './catalog/age-bands.js';
+import { AGE_BAND_RULES, UNIFIED_AGE_RANGES } from './catalog/age-bands.js';
 
 /** 维度注册表。可运行时追加维度，不改代码。 */
 export class DimensionRegistry {
@@ -99,15 +99,28 @@ function patternToRegExp(pattern: string): RegExp {
 export class MappingTable {
   private readonly byId = new Map<string, TagMapping>();
   private readonly bySource = new Map<string, TagMapping[]>();
+  private readonly registry: DimensionRegistry;
 
-  constructor(mappings: readonly TagMapping[] = TAG_MAPPINGS) {
+  constructor(
+    mappings: readonly TagMapping[] = TAG_MAPPINGS,
+    registry: DimensionRegistry = new DimensionRegistry(),
+  ) {
+    this.registry = registry;
     for (const mapping of mappings) this.add(mapping);
   }
 
-  /** 追加映射。 */
+  /**
+   * 追加映射。
+   *
+   * 跨体系互转等结构性问题在此**直接拒绝**，不靠运行期调用 `validate()` 才发现。
+   */
   add(mapping: TagMapping): void {
     if (this.byId.has(mapping.id)) {
       throw new Error(`映射 id 已存在: ${mapping.id}`);
+    }
+    const problems = this.validateOne(mapping);
+    if (problems.length > 0) {
+      throw new Error(`映射 ${mapping.id} 校验失败: ${problems.join('；')}`);
     }
     this.byId.set(mapping.id, mapping);
     const key = MappingTable.sourceKey(mapping.platform, mapping.sourceDimension, mapping.sourceLabel);
@@ -162,26 +175,33 @@ export class MappingTable {
 
   /**
    * 与维度注册表交叉校验：
-   * 目标维度必须存在；目标标签必须在该维度的统一词表内。
+   * 目标维度必须存在；目标标签必须在该维度的统一词表内；不得跨体系互转。
    */
-  validate(registry: DimensionRegistry): string[] {
+  validate(registry: DimensionRegistry = this.registry): string[] {
     const problems: string[] = [];
     for (const mapping of this.byId.values()) {
-      const target = registry.get(mapping.targetDimension);
-      if (!target) {
-        problems.push(`映射 ${mapping.id} 的目标维度未登记: ${mapping.targetDimension}`);
-        continue;
-      }
-      if (target.labels && !target.labels.includes(mapping.targetLabel)) {
-        problems.push(`映射 ${mapping.id} 的目标标签不在维度 ${target.id} 词表内: ${mapping.targetLabel}`);
-      }
-      // B1: 禁止跨体系互转。源维度与目标维度必须属于同一体系族。
-      const sourceSpec = registry.findBySourceDimension(mapping.platform, mapping.sourceDimension);
-      if (sourceSpec && sourceSpec.family && target.family && sourceSpec.family !== target.family) {
-        problems.push(
-          `映射 ${mapping.id} 跨体系互转：源维度 ${sourceSpec.id}(${sourceSpec.family}) → 目标维度 ${target.id}(${target.family})`,
-        );
-      }
+      problems.push(...this.validateOne(mapping, registry));
+    }
+    return problems;
+  }
+
+  /** 单条映射的结构校验。 */
+  validateOne(mapping: TagMapping, registry: DimensionRegistry = this.registry): string[] {
+    const problems: string[] = [];
+    const target = registry.get(mapping.targetDimension);
+    if (!target) {
+      problems.push(`目标维度未登记: ${mapping.targetDimension}`);
+      return problems;
+    }
+    if (target.labels && !target.labels.includes(mapping.targetLabel)) {
+      problems.push(`目标标签不在维度 ${target.id} 词表内: ${mapping.targetLabel}`);
+    }
+    // 禁止跨体系互转。源维度与目标维度必须属于同一体系族。
+    const sourceSpec = registry.findBySourceDimension(mapping.platform, mapping.sourceDimension);
+    if (sourceSpec?.family && target.family && sourceSpec.family !== target.family) {
+      problems.push(
+        `跨体系互转：源维度 ${sourceSpec.id}(${sourceSpec.family}) → 目标维度 ${target.id}(${target.family})`,
+      );
     }
     return problems;
   }
@@ -190,9 +210,19 @@ export class MappingTable {
 /** 有序分档（年龄等）的归并规则表。可运行时追加。 */
 export class BandResolver {
   private readonly rules: BandRule[] = [];
+  private rangeTable: Record<string, [number, number]>;
 
-  constructor(rules: readonly BandRule[] = AGE_BAND_RULES) {
+  constructor(
+    rules: readonly BandRule[] = AGE_BAND_RULES,
+    ranges: Record<string, [number, number]> = UNIFIED_AGE_RANGES,
+  ) {
     for (const rule of rules) this.add(rule);
+    this.rangeTable = ranges;
+  }
+
+  /** 目标档的数值区间表。用于按重叠比例拆分跨边界源档。 */
+  ranges(): Record<string, [number, number]> {
+    return this.rangeTable;
   }
 
   add(rule: BandRule): void {

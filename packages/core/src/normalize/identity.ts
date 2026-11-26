@@ -1,5 +1,12 @@
 import { basename } from 'node:path';
 
+/** 文件名末尾常见的平台后缀，解析实体标识时剥离。 */
+const PLATFORM_SUFFIXES = new Set([
+  '抖音', '天猫', '京东', '小红书', '拼多多', '快手', '唯品会', '淘宝', '得物',
+  '视频号', '微信', '线下', '实体店', '直播', '线下门店',
+  'douyin', 'tmall', 'jd', 'xhs', 'pdd', 'ks', 'vip', 'taobao', 'offline',
+]);
+
 /**
  * 月份与实体标识的解析。
  *
@@ -74,7 +81,10 @@ export function parsePortraitEntityId(raw: string): { entityId: string; month?: 
   }
 
   // 只按下划线切分，避免把「2507-2606」这类月份区间拆开
-  const segments = stripped.split('_').filter((s) => s !== '');
+  const segments = stripped
+    .split('_')
+    .filter((s) => s !== '')
+    .filter((s) => !PLATFORM_SUFFIXES.has(s.toLowerCase()));
   for (let i = 0; i < segments.length; i += 1) {
     const segment = segments[i]!;
     if (segment.startsWith('款号') && segment.length > 2) {

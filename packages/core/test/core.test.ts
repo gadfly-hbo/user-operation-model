@@ -277,20 +277,45 @@ describe('可扩展性', () => {
 });
 
 describe('目录规模', () => {
-  test('维度、映射、年龄规则、商品字段均有实质规模', () => {
-    assert.ok(DIMENSIONS.length >= 30, `维度过少: ${DIMENSIONS.length}`);
-    assert.ok(TAG_MAPPINGS.length >= 60, `映射过少: ${TAG_MAPPINGS.length}`);
-    assert.ok(AGE_BAND_RULES.length >= 30, `年龄规则过少: ${AGE_BAND_RULES.length}`);
+  test('目录规模为精确值，不是下限', () => {
+    assert.equal(DIMENSIONS.length, 36);
+    assert.equal(TAG_MAPPINGS.length, 77);
+    assert.equal(AGE_BAND_RULES.length, 32);
+    assert.equal(TAG_MAPPINGS.filter((m) => m.status === 'needs-confirmation').length, 5);
+  });
+
+  test('每条年龄规则都声明了源区间', () => {
+    for (const rule of AGE_BAND_RULES) {
+      assert.ok(rule.sourceRange, `规则缺少 sourceRange: ${rule.platform}/${rule.sourceBand}`);
+    }
   });
 });
 
 describe('复核补强：B1 跨体系互转必须被拒绝', () => {
   const registry = new DimensionRegistry();
 
-  test('注入违禁互转映射时，交叉校验报错', () => {
+  test('注入违禁互转映射时，追加即被拒绝', () => {
     const table = new MappingTable();
-    table.add({
-      id: 'violate.fabric-to-general',
+    assert.throws(
+      () =>
+        table.add({
+          id: 'violate.fabric-to-general',
+          platform: 'tmall',
+          sourceDimension: '大服饰策略人群',
+          sourceLabel: '潮流人群',
+          targetDimension: 'strategy_segment',
+          targetLabel: '都市蓝领',
+          confidence: 'manual',
+          status: 'confirmed',
+        }),
+      /跨体系互转/,
+    );
+  });
+
+  test('跨体系互转在交叉校验中同样被报出', () => {
+    const table = new MappingTable();
+    const problems = table.validateOne({
+      id: 'violate.check',
       platform: 'tmall',
       sourceDimension: '大服饰策略人群',
       sourceLabel: '潮流人群',
@@ -299,10 +324,24 @@ describe('复核补强：B1 跨体系互转必须被拒绝', () => {
       confidence: 'manual',
       status: 'confirmed',
     });
-    const problems = table.validate(registry);
-    assert.ok(
-      problems.some((p) => p.includes('跨体系互转')),
-      `跨体系互转未被检出: ${JSON.stringify(problems)}`,
+    assert.ok(problems.some((p) => p.includes('跨体系互转')));
+  });
+
+  test('服饰体系不得映射到无族维度', () => {
+    const table = new MappingTable();
+    assert.throws(
+      () =>
+        table.add({
+          id: 'violate.fabric-to-city',
+          platform: 'tmall',
+          sourceDimension: '大服饰策略人群',
+          sourceLabel: '潮流人群',
+          targetDimension: 'city_tier',
+          targetLabel: '一线',
+          confidence: 'manual',
+          status: 'confirmed',
+        }),
+      /跨体系互转/,
     );
   });
 

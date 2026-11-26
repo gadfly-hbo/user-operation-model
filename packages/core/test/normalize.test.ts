@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import {
   douyinPortraitCsv,
   jdPortraitXlsx,
@@ -204,8 +205,11 @@ describe('京东画像归一化', () => {
 
   test('无对应的年龄档不并入任何目标档', () => {
     const age = portrait.projections.age;
-    assert.equal(age?.labels['18-23']?.share, 0.08);
-    assert.equal(age?.labels['24-30']?.share, 0.15);
+    // 21~25 岁横跨 18-23 与 24-30，按区间重叠拆分：3/5 与 2/5
+    assert.ok(Math.abs((age?.labels['18-23']?.share ?? 0) - 0.08 * 3 / 5) < 1e-9);
+    assert.ok(Math.abs((age?.labels['24-30']?.share ?? 0) - (0.08 * 2 / 5 + 0.15)) < 1e-9);
+    // 0~15 岁无对应目标档，不并入任何档位
+    assert.ok((age?.labels['18-23']?.share ?? 0) < 0.05, '0~15 岁不应被并入 18-23');
     const unmapped = portrait.issues?.find((i) => i.kind === 'unmapped-value');
     assert.ok(unmapped, '缺少未映射取值的问题记录');
   });
@@ -288,5 +292,143 @@ describe('渠道宽表归一化', () => {
     assert.equal(tmall?.channelType, '天猫');
     assert.equal(tmall?.channelGrade, '旗舰店');
     assert.equal(tmall?.city, '上海');
+  });
+});
+
+describe('复核补强：spill 按区间重叠拆分', () => {
+  test('天猫 [18,24] 按 6/7 与 1/7 拆入两个目标档', async () => {
+    const path = await tmallPortraitXlsx(join(dir, 'spill.xlsx'), [
+      ['预测年龄', '[18,24]', '30.00%'],
+      ['预测年龄', '[30,34]', '10.00%'],
+    ]);
+    const portrait = await normalizeTmallPortrait(path, { entityType: 'channel' });
+    const age = portrait.projections.age;
+    // [18,24]：18-23 重叠 6 岁、24-30 重叠 1 岁
+    assert.ok(Math.abs((age?.labels['18-23']?.share ?? 0) - 0.3 * 6 / 7) < 1e-9);
+    assert.ok(Math.abs((age?.labels['24-30']?.share ?? 0) - (0.3 * 1 / 7 + 0.1 * 1 / 5)) < 1e-9);
+    // [30,34]：31-40 重叠 4 岁、24-30 重叠 1 岁
+    assert.ok(Math.abs((age?.labels['31-40']?.share ?? 0) - 0.1 * 4 / 5) < 1e-9);
+    assert.ok(Math.abs((age?.labels['24-30']?.share ?? 0) - (0.3 * 1 / 7 + 0.1 * 1 / 5)) < 1e-9);
+  });
+
+  test('抖音完整落在单档的源档不被拆分', () => {
+    const path = douyinPortraitCsv(join(dir, 'nospill.csv'), '演示门店', '2026-10', [
+      ['预测年龄段', '24-30', '26.14%', '196.9'],
+    ]);
+    const portrait = normalizeDouyinPortrait(path, { entityType: 'channel' });
+    assert.ok(
+      Math.abs((portrait.projections.age?.labels['24-30']?.share ?? 0) - 0.2614) < 1e-9,
+    );
+  });
+});
+
+describe('复核补强：TGI 加权平均', () => {
+  test('两个源档合并到同一目标档时，TGI 按占比加权平均', () => {
+    const path = douyinPortraitCsv(join(dir, 'tgi.csv'), '演示门店', '2026-10', [
+      ['预测年龄段', '18-19', '2.79%', '93.73368817435292'],
+      ['预测年龄段', '20-23', '9.74%', '151.2182799322709'],
+    ]);
+    const portrait = normalizeDouyinPortrait(path, { entityType: 'channel' });
+    const merged = portrait.projections.age?.labels['18-23'];
+    assert.ok(merged);
+    const expected =
+      (93.73368817435292 * 0.0279 + 151.2182799322709 * 0.0974) / 0.1253;
+    assert.ok(Math.abs((merged.tgi ?? 0) - expected) < 1e-9, `TGI 加权平均不符: ${merged.tgi}`);
+  });
+
+  test('缺 TGI 的源项不参与加权平均', () => {
+    const path = douyinPortraitCsv(join(dir, 'tgi2.csv'), '演示门店', '2026-10', [
+      ['预测性别', '男', '10.00%', '90'],
+      ['预测性别', '女', '90.00%', ''],
+    ]);
+    const portrait = normalizeDouyinPortrait(path, { entityType: 'channel' });
+    const male = portrait.projections.gender?.labels['男'];
+    assert.equal(male?.tgi, 90);
+  });
+});
+
+describe('复核补强：标签命名空间前缀', () => {
+  test('通配模式匹配的维度带原生维度名前缀，避免同名覆盖', async () => {
+    const path = await tmallPortraitXlsx(join(dir, 'ns.xlsx'), [
+      ['奶粉价格段偏好', '0-49元', '10.00%'],
+      ['彩妆价格段偏好', '0-29元', '20.00%'],
+    ]);
+    const portrait = await normalizeTmallPortrait(path, { entityType: 'channel' });
+    const band = portrait.projections.category_price_band;
+    assert.ok(band?.labels['奶粉价格段偏好·0-49元']);
+    assert.ok(band?.labels['彩妆价格段偏好·0-29元']);
+  });
+});
+
+describe('复核补强：SKU 去重保留首行', () => {
+  test('同款号多行时保留首行取值并记录冲突', async () => {
+    const path = await writeXlsx(join(dir, 'sku.xlsx'), 'Sheet1', [
+      ['款号', '吊牌价', '商品定位'],
+      ['SPU-1', '199', 'FIRST'],
+      ['SPU-1', '299', 'SECOND'],
+    ]);
+    const result = await normalizeProductTable(path);
+    assert.equal(result.products.length, 1);
+    assert.equal(result.products[0]?.price?.tagPrice, 199);
+    assert.deepEqual(result.products[0]?.comparisonOnly?.['product_positioning'], ['FIRST']);
+    assert.ok(result.issues.some((i) => i.kind === 'conflict' && i.sourceLabel === 'SPU-1'));
+  });
+});
+
+describe('复核补强：归一化入口的 entityId 与 month', () => {
+  test('抖音从表头列名解析实体与月份区间', () => {
+    const path = douyinPortraitCsv(
+      join(dir, 'entity.csv'),
+      '演示门店',
+      '2507-2606',
+      [['预测性别', '男', '50%', '100']],
+    );
+    const portrait = normalizeDouyinPortrait(path, { entityType: 'channel' });
+    assert.equal(portrait.entityId, '演示门店');
+    assert.equal(portrait.month, '2025-07~2026-06');
+  });
+
+  test('显式传入的 entityId 优先于文件名解析', async () => {
+    const path = await tmallPortraitXlsx(join(dir, 'override.xlsx'), [
+      ['预测性别', '女', '60%'],
+    ]);
+    const portrait = await normalizeTmallPortrait(path, {
+      entityType: 'channel',
+      entityId: '显式实体',
+      month: '2026-03',
+    });
+    assert.equal(portrait.entityId, '显式实体');
+    assert.equal(portrait.month, '2026-03');
+  });
+});
+
+describe('复核补强：错误路径必须明确报错', () => {
+  test('空文件抛 parse-error', async () => {
+    const path = join(dir, 'empty.csv');
+    writeFileSync(path, '', 'utf8');
+    assert.throws(() => normalizeDouyinPortrait(path, {}), /为空或无法解析/);
+  });
+
+  test('只有表头没有数据行时抛错', async () => {
+    const path = writeCsv(join(dir, 'headeronly.csv'), [['标签类型', '标签', 'X-占比']]);
+    assert.throws(() => normalizeDouyinPortrait(path, {}), /只有表头/);
+  });
+
+  test('缺少占比列时抛 missing-field', () => {
+    const path = writeCsv(join(dir, 'noshare.csv'), [
+      ['标签类型', '标签'],
+      ['预测性别', '男'],
+    ]);
+    assert.throws(() => normalizeDouyinPortrait(path, {}), /占比/);
+  });
+
+  test('天猫 sheet 名不符时抛错', async () => {
+    const path = await writeXlsx(join(dir, 'wrongsheet.xlsx'), '其它', [['a', 'b']]);
+    await assert.rejects(() => normalizeTmallPortrait(path, {}), /为空|sheet/);
+  });
+
+  test('京东缺少必要列时抛错', async () => {
+    const path = await writeXlsx(join(dir, 'wrongcols.xlsx'), 'Sheet0', [['无关列', 'x']]);
+    await assert.rejects(() => normalizeJdPortrait(path, {}), /缺少必要列/);
   });
 });

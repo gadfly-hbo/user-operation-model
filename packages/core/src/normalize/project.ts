@@ -6,6 +6,7 @@ import type {
   PortraitProjection,
 } from '../portrait/types.js';
 import type { BandResolver, DimensionRegistry, MappingTable } from '../portrait/registry.js';
+import type { BandRule } from '../portrait/types.js';
 import type { NormalizationIssue } from './types.js';
 
 /** 投影上下文。 */
@@ -218,7 +219,85 @@ function projectBanded(
   if (rule.precision === 'partial' || rule.precision === 'lossy') {
     accumulator.lossySources.push(sourceLabel);
   }
-  accumulate(accumulators, target.dimension, rule.targetBand, label);
+
+  for (const [band, ratio] of splitByOverlap(rule, ctx.bands.ranges())) {
+    accumulate(accumulators, target.dimension, band, {
+      share: label.share * ratio,
+      ...(label.tgi !== undefined ? { tgi: label.tgi } : {}),
+    });
+  }
+}
+
+/**
+ * 按源档与目标档的**区间重叠比例**拆分占比。
+ *
+ * 跨边界源档（如天猫 `[18,24]` 横跨 `18-23` 与 `24-30`）若把全部占比记入主档，
+ * 会让主档系统性偏高、次要档系统性偏低。拆分依据是源档闭区间与目标档闭区间的
+ * 重叠整数岁数。
+ *
+ * 源区间未被任何目标档覆盖的部分，并入**距离最近**的目标档（占比守恒），
+ * 同时该规则仍标 `partial` 以提示精度损失。差距过大（如童装 0–15 岁）时
+ * 规则本身为 `unmapped`，不会被拆��。
+ */
+function splitByOverlap(
+  rule: BandRule,
+  ranges: Record<string, [number, number]>,
+): Array<[string, number]> {
+  const targetBand = rule.targetBand;
+  if (!targetBand) return [];
+  if (!rule.sourceRange) return [[targetBand, 1]];
+
+  const [start, end] = rule.sourceRange;
+  const total = end - start + 1;
+  if (total <= 0) return [[targetBand, 1]];
+
+  const candidates = [targetBand, ...(rule.spill ? [rule.spill] : [])];
+  const parts = new Map<string, number>();
+  let covered = 0;
+
+  for (const band of candidates) {
+    const range = ranges[band];
+    if (!range) continue;
+    const low = Math.max(start, range[0]);
+    const high = Math.min(end, range[1]);
+    if (high < low) continue;
+    const years = high - low + 1;
+    parts.set(band, (parts.get(band) ?? 0) + years);
+    covered += years;
+  }
+
+  if (covered === 0) {
+    // 源区间未覆盖任何候选档：并入距离最近的目标档
+    const nearest = nearestBand(start, end, ranges) ?? targetBand;
+    return [[nearest, 1]];
+  }
+
+  const rest = total - covered;
+  if (rest > 0) {
+    const nearest = nearestBand(start, end, ranges) ?? targetBand;
+    parts.set(nearest, (parts.get(nearest) ?? 0) + rest);
+  }
+
+  return [...parts.entries()].map(([band, years]) => [band, years / total]);
+}
+
+/** 找出与源区间距离最近的目标档。 */
+function nearestBand(
+  start: number,
+  end: number,
+  ranges: Record<string, [number, number]>,
+): string | undefined {
+  let best: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const [band, range] of Object.entries(ranges)) {
+    const distance =
+      start > range[1] ? start - range[1] : end < range[0] ? range[0] - end : 0;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = band;
+    }
+  }
+  return best;
 }
 
 function projectIdentity(

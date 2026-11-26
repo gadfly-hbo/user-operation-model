@@ -152,5 +152,10 @@ export interface BandRule {
   precision: BandPrecision;
   /** 部分落入的次要目标档。 */
   spill?: string;
+  /**
+   * 源档的数值区间（闭区间）。存在时，跨边界源档按区间重叠比例拆分到目标档，
+   * 而不是把全部占比记入主档。
+   */
+  sourceRange?: [number, number];
   note?: string;
 }
