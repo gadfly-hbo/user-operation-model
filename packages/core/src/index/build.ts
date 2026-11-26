@@ -37,6 +37,18 @@ const firstExisting = (dataRoot: string, candidates: string[]): string | undefin
  */
 export const DATA_SOURCE_PROBES: DataSourceProbe[] = [
   {
+    tool: 'get_brand_portrait',
+    probe: (dataRoot) => {
+      const dir = join(dataRoot, 'domains', '01_品牌信息');
+      const found = existsSync(dir)
+        ? listFiles(dir).some((file) => /画像/.test(file))
+        : false;
+      return found
+        ? undefined
+        : '品牌人群画像未接入：期望 data/domains/01_品牌信息/ 下有品牌画像文件（当前只有品牌清单）';
+    },
+  },
+  {
     tool: 'get_competitor_portrait',
     probe: (dataRoot) => {
       const dir = join(dataRoot, 'domains', '07_人群画像', '竞品');
@@ -161,6 +173,16 @@ export async function buildIndex(options: BuildIndexOptions = {}): Promise<DataI
   const dataRoot = options.dataRoot ?? 'data';
   const scanDirs = options.scanDirs ?? ['domains', 'source'];
   const issues: NormalizationIssue[] = [];
+
+  if (!existsSync(dataRoot)) {
+    throw new Error(`数据根目录不存在：${dataRoot}`);
+  }
+  const foundScanDirs = scanDirs.filter((dir) => existsSync(join(dataRoot, dir)));
+  if (foundScanDirs.length === 0) {
+    throw new Error(
+      `数据根目录 ${dataRoot} 下没有可扫描的子目录（期望 ${scanDirs.join(' 或 ')}）`,
+    );
+  }
   const portraits: NormalizedPortrait[] = [];
   const products: DataIndex['products'] = [];
   const channels: DataIndex['channels'] = [];
@@ -174,8 +196,20 @@ export async function buildIndex(options: BuildIndexOptions = {}): Promise<DataI
       if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
         if (/商品.*信息表|商品宽表/.test(relativePath)) {
           const result = await normalizeProductTable(file);
-          products.push(...result.products);
           issues.push(...result.issues);
+          for (const product of result.products) {
+            const existing = products.find((item) => item.spu === product.spu);
+            if (existing) {
+              issues.push({
+                kind: 'conflict',
+                severity: 'warning',
+                sourceLabel: product.spu,
+                message: `款号 ${product.spu} 在多张商品表中重复（${relativePath}），保留先到的一条，未做隐式合并`,
+              });
+              continue;
+            }
+            products.push(product);
+          }
           continue;
         }
         if (/渠道.*宽表|店铺.*宽表/.test(relativePath)) {
@@ -206,8 +240,15 @@ export async function buildIndex(options: BuildIndexOptions = {}): Promise<DataI
           const portrait = normalizeDouyinPortrait(file, { entityType: detectEntityType(file) });
           portraits.push(portrait);
           issues.push(...(portrait.issues ?? []));
+          continue;
         }
       }
+
+      issues.push({
+        kind: 'parse-error',
+        severity: 'warning',
+        message: `未识别的数据文件，已跳过：${relativePath}`,
+      });
     }
   }
 

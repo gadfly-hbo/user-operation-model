@@ -209,10 +209,13 @@ openspec/changes/data-mcp-core/**
 
 **数据未就位的工具**返回**明确错误**并说明缺什么数据源，**不返回空结果**——与 DM13 的口径一致（空结果与数据缺失必须可区分）。
 
+首版状态：**9 个工具数据就绪，8 个数据未就位**。数据是否就绪由**数据目录探测**决定（`packages/core/src/index/build.ts` 的 `DATA_SOURCE_PROBES`），文件到位后自动可用，不需要改代码。
+
 ### 已知的数据未就位项
 
 | 工具 | 缺什么 |
 | --- | --- |
+| `get_brand_portrait` | 品牌人群画像（`01_品牌信息` 当前只有品牌清单，没有人群画像） |
 | `get_competitor_portrait` | 竞品人群画像（样例中无竞品画像文件） |
 | `get_funnel` | 生命周期漏斗（浏览／收藏／加购／购买／退货） |
 | `list_member_features` | 会员特征字典表 |

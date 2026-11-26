@@ -232,4 +232,11 @@ describe('参数校验', () => {
     assert.equal(payload.ok, false);
     assert.equal(payload.error?.kind, 'invalid-argument');
   });
+
+  test('get_brand_portrait 在品牌画像未接入时报 data-not-ready，不是空结果', async () => {
+    const payload = await call('get_brand_portrait', { scope: 'all' });
+    assert.equal(payload.ok, false, '数据未就位必须返回错误而非空结果');
+    assert.equal(payload.error?.kind, 'data-not-ready');
+    assert.ok(payload.error?.message.includes('品牌人群画像'));
+  });
 });

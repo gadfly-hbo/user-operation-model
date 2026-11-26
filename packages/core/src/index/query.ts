@@ -48,8 +48,21 @@ export function findPortraitByEntityIds(
   const matches = index.portraits.filter(
     (portrait) => portrait.entityType === key.entityType && ids.has(portrait.entityId),
   );
-  if (key.month) return matches.find((portrait) => portrait.month === key.month);
+  if (key.month) {
+    const matched = matches.filter((portrait) => portrait.month === key.month);
+    if (matched.length === 0) return undefined;
+    // 同月可能命中多个平台（抖音／天猫／京东各自一份），按平台名确定性选择，
+    // 不依赖数组顺序
+    return [...matched].sort((left, right) =>
+      portraitPlatform(left).localeCompare(portraitPlatform(right)),
+    )[0];
+  }
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** 画像的来源平台（platformLabels 的第一个键）。 */
+export function portraitPlatform(portrait: NormalizedPortrait): string {
+  return Object.keys(portrait.platformLabels)[0] ?? '';
 }
 
 /**
@@ -150,6 +163,8 @@ export function listProducts(index: DataIndex, filter: ProductFilter = {}): Prod
 export interface TagHit {
   entityType: Portrait['entityType'];
   entityId: string;
+  /** 画像来源平台（抖音／天猫／京东）。 */
+  platform: string;
   month: string;
   share: number;
   tgi?: number;
@@ -175,6 +190,7 @@ export function searchByTag(
     hits.push({
       entityType: portrait.entityType,
       entityId: portrait.entityId,
+      platform: portraitPlatform(portrait),
       month: portrait.month,
       share: label.share,
       ...(label.tgi !== undefined ? { tgi: label.tgi } : {}),
@@ -193,6 +209,8 @@ export interface SimilarHit {
   attributeScore: number;
   portraitScore: number;
   sharedDimensions: number;
+  /** 是否参与过画像比较。无画像时画像分不计入总分。 */
+  hasPortrait: boolean;
 }
 
 /** 属性 Jaccard 相似度。 */
@@ -251,7 +269,11 @@ export function similarProducts(
         }
       }
     }
-    const score = attributeScore * 0.5 + portraitScore * 0.5;
+    // 无画像可比时，画像分**不计入**总分，避免系统性压低无画像商品
+    const hasPortrait = sharedDimensions > 0;
+    const score = hasPortrait
+      ? attributeScore * 0.5 + portraitScore * 0.5
+      : attributeScore;
     hits.push({
       spu: candidate.spu,
       ...(candidate.name ? { name: candidate.name } : {}),
@@ -259,6 +281,7 @@ export function similarProducts(
       attributeScore,
       portraitScore,
       sharedDimensions,
+      hasPortrait,
     });
   }
   hits.sort((left, right) => right.score - left.score);
@@ -296,29 +319,36 @@ export function aggregatePortrait(
     memberPortraits.flatMap((portrait) => Object.keys(portrait.projections)),
   );
   for (const dimension of allDimensions) {
-    const labels: Record<string, PortraitLabel> = {};
+    const accumulators = new Map<
+      string,
+      { share: number; tgiSum: number; tgiWeight: number }
+    >();
     let counted = 0;
     for (const portrait of memberPortraits) {
       const projection = portrait.projections[dimension];
       if (!projection) continue;
       counted += 1;
       for (const [label, value] of Object.entries(projection.labels)) {
-        const existing = labels[label] ?? { share: 0 };
+        const existing = accumulators.get(label) ?? { share: 0, tgiSum: 0, tgiWeight: 0 };
         existing.share += value.share;
         if (value.tgi !== undefined) {
-          const weight = existing.share > 0 ? value.share : 1;
-          existing.tgi =
-            existing.tgi === undefined
-              ? value.tgi
-              : (existing.tgi * (1 - value.share / (existing.share + value.share)) +
-                  value.tgi * (value.share / (existing.share + value.share))) * weight;
+          // TGI 按占比加权平均：Σ(tgiᵢ × shareᵢ) / Σ(shareᵢ)
+          existing.tgiSum += value.tgi * value.share;
+          existing.tgiWeight += value.share;
         }
-        labels[label] = existing;
+        accumulators.set(label, existing);
       }
     }
     if (counted === 0) continue;
-    for (const label of Object.keys(labels)) {
-      labels[label]!.share /= counted;
+    // 占比取平均（各成员等权）；TGI 是按占比的加权平均，不再缩放
+    const labels: Record<string, PortraitLabel> = {};
+    for (const [label, accumulator] of accumulators) {
+      labels[label] = {
+        share: accumulator.share / counted,
+        ...(accumulator.tgiWeight > 0
+          ? { tgi: accumulator.tgiSum / accumulator.tgiWeight }
+          : {}),
+      };
     }
     dimensions[dimension] = { dimension, labels };
   }

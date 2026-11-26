@@ -135,18 +135,27 @@ export function createServer(index: DataIndex): McpServer {
       });
       if (!portrait) {
         const months = availableMonths(index, 'channel', entityIds);
+        if (months.length === 0) {
+          return err(
+            'not-found',
+            `渠道 ${channelId} 在索引中没有人群画像`,
+            '渠道存在但无画像数据；用 list_channels 看画像覆盖情况',
+          );
+        }
         return err(
           month ? 'month-mismatch' : 'ambiguous',
           month
             ? `渠道 ${channelId} 在 ${month} 无画像`
             : `渠道 ${channelId} 有多份画像，必须指定 month`,
-          months.length ? `可用月份：${months.join('、')}` : undefined,
+          `可用月份：${months.join('、')}`,
         );
       }
       return ok({
         channelId,
         channel,
         month: portrait.month,
+        sampleSize: portrait.sampleSize,
+        coverage: portrait.coverage,
         projections: portrait.projections,
         platformLabels: portrait.platformLabels,
         issues: portrait.issues ?? [],
@@ -170,17 +179,17 @@ export function createServer(index: DataIndex): McpServer {
       if (scope !== 'target' && scope !== 'all') {
         return err('invalid-argument', `scope 必须是 target 或 all，收到 ${scope}`);
       }
-      if (!index.unavailable.get_brand_portrait) {
-        const portraits = index.portraits.filter(
-          (portrait) => portrait.entityType === 'brand',
-        );
-        return ok({ scope, portraits });
+      const unavailable = index.unavailable['get_brand_portrait'];
+      if (unavailable) {
+        return err('data-not-ready', unavailable, '工具 get_brand_portrait 暂不可用');
       }
-      return err(
-        'data-not-ready',
-        '品牌人群画像未接入：期望 data/domains/01_品牌信息/ 下有品牌画像文件',
-        '当前 01_品牌信息 只有品牌清单，没有人群画像',
+      const portraits = index.portraits.filter(
+        (portrait) => portrait.entityType === 'brand',
       );
+      if (portraits.length === 0) {
+        return err('not-found', '索引中没有品牌人群画像');
+      }
+      return ok({ scope, portraits });
     },
   );
 
@@ -287,10 +296,17 @@ export function createServer(index: DataIndex): McpServer {
       });
       if (!portrait) {
         const months = availableMonths(index, 'product', spu);
+        if (months.length === 0) {
+          return err(
+            'not-found',
+            `商品 ${spu} 在索引中没有人群画像`,
+            '商品存在但无画像数据',
+          );
+        }
         return err(
           month ? 'month-mismatch' : 'ambiguous',
-          month ? `商品 ${spu} 在 ${month} 无画像` : `商品 ${spu} 无画像或有多份画像`,
-          months.length ? `可用月份：${months.join('、')}` : undefined,
+          month ? `商品 ${spu} 在 ${month} 无画像` : `商品 ${spu} 有多份画像，必须指定 month`,
+          `可用月份：${months.join('、')}`,
         );
       }
       const dimensions = Array.isArray(args.dimensions) ? (args.dimensions as string[]) : undefined;
@@ -302,6 +318,8 @@ export function createServer(index: DataIndex): McpServer {
       return ok({
         spu,
         month: portrait.month,
+        sampleSize: portrait.sampleSize,
+        coverage: portrait.coverage,
         projections,
         platformLabels: portrait.platformLabels,
         issues: portrait.issues ?? [],
@@ -325,7 +343,7 @@ export function createServer(index: DataIndex): McpServer {
       if (level !== 'category') {
         return err(
           'data-not-ready',
-          `聚合层级 ${level} 未接入：需要聚合口径表（品��归属哪个系列／爆款／IP）`,
+          `聚合层级 ${level} 未接入：需要聚合口径表（商品归属哪个系列／爆款／IP）`,
           '当前仅支持 category 层级，可由商品档案的品类字段推导',
         );
       }

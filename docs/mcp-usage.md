@@ -43,7 +43,7 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 
 | 工具 | 参数 | 数据状态 |
 | --- | --- | --- |
-| `get_brand_portrait` | `scope` `month?` | `scope` 必须为 `target`／`all`，否则 `invalid-argument`；品牌画像数据未接入 |
+| `get_brand_portrait` | `scope` `month?` | `scope` 必须为 `target`／`all`，否则 `invalid-argument`；品牌画像数据未接入时返回 `data-not-ready` |
 | `get_competitor_portrait` | `brand` `month?` | 数据未接入 |
 
 ### 商品
@@ -67,6 +67,8 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 ### 会员与留存
 
 `list_member_features` · `get_retention_cohort` · `get_recency_distribution` · `get_channel_flow_matrix` · `get_diagnosis` —— **数据未接入**，返回 `data-not-ready` 并说明缺哪个文件。
+
+连同 `get_brand_portrait` 与 `get_competitor_portrait`，共 **8 个工具数据未就位**，其余 **9 个**已接入真实数据。
 
 ## 返回结构
 
@@ -100,7 +102,7 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 
 MCP 对外统一用**店铺编码**查询，内部通过渠道宽表的 `店铺` 字段关联画像实体名。两者对不上时返回 `not-found` 并列出可用月份。
 
-> **已知数据问题**：现有样例的 7 份画像中只有 1 份能关联到渠道宽表——画像用全称、渠道宽表用简称，且部分门店不在 200 个渠道内。见[归一化规则 §10](normalize-rules.md#10-已知数据质量问题)。
+> **已知数据问题**：现有样例的 7 份画像中只有 1 份能关联到渠道宽表——画像文件名用「品牌+门店名」全称，渠道宽表 `店铺` 列用简称（如「森马广州北京路旗舰店」），字符串不相等；200 个渠道覆盖森马、巴拉巴拉等多个品牌，与画像所属品牌不同。见[归一化规则 §10](normalize-rules.md#10-已知数据质量问题)。
 
 ## 数据源探测
 
@@ -108,6 +110,7 @@ MCP 对外统一用**店铺编码**查询，内部通过渠道宽表的 `店铺`
 
 | 工具 | 探测的文件 |
 | --- | --- |
+| `get_brand_portrait` | `data/domains/01_品牌信息/` 下含「画像」字样的文件 |
 | `get_competitor_portrait` | `data/domains/07_人群画像/竞品/` |
 | `get_funnel` | `data/tables/funnel.csv` |
 | `list_member_features` | `data/tables/member-features.csv` |
