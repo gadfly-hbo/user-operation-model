@@ -1,12 +1,24 @@
+import { existsSync } from 'node:fs';
 import ExcelJS from 'exceljs';
 import { NormalizationError } from './types.js';
 
 /** 读 XLSX 的首个 sheet（或指定 sheet），返回二维字符串数组。 */
 export async function readXlsxRows(path: string, sheetName?: string): Promise<string[][]> {
+  // 文件不存在是调用方问题，显式抛标准 ENOENT，不混入解析错误语义
+  if (!existsSync(path)) {
+    const error = new Error(
+      `ENOENT: no such file or directory, open '${path}'`,
+    ) as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    throw error;
+  }
+
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.readFile(path);
   } catch (error) {
+    // 文件不存在是调用方问题，保留 ENOENT 语义，不包装成解析错误
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw error;
     throw new NormalizationError(
       'parse-error',
       `XLSX 无法解析：${(error as Error).message}`,

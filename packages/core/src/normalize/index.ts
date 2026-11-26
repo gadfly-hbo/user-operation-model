@@ -70,12 +70,14 @@ export function normalizeDouyinPortrait(
     if (!dimension || !label) continue;
     const share = parseShare(row[shareColumn]);
     const tgi = parseTgi(row[tgiColumn]);
-    if (share === undefined && tgi === undefined) {
+    // 占比是必填项：占比不可解析即视为该行不可用，
+    // 不因 TGI 正常就伪造 share=0。
+    if (share === undefined) {
       unparsable += 1;
       continue;
     }
     platformLabels[dimension] ??= {};
-    platformLabels[dimension]![label] = share === undefined ? { share: 0, ...(tgi !== undefined ? { tgi } : {}) } : { share, ...(tgi !== undefined ? { tgi } : {}) };
+    platformLabels[dimension]![label] = { share, ...(tgi !== undefined ? { tgi } : {}) };
   }
 
   if (Object.keys(platformLabels).length === 0) {
@@ -224,15 +226,14 @@ export async function normalizeJdPortrait(
     if (!dimension || !label) continue;
     const share = parseShare(row[shareIndex]);
     const tgi = parseTgi(row[tgiIndex]);
-    if (share === undefined && tgi === undefined) {
+    // 占比是必填项：占比不可解析即视为该行不可用，
+    // 不因 TGI 正常就伪造 share=0。
+    if (share === undefined) {
       unparsable += 1;
       continue;
     }
     platformLabels[dimension] ??= {};
-    platformLabels[dimension]![label] = {
-      share: share ?? 0,
-      ...(tgi !== undefined ? { tgi } : {}),
-    };
+    platformLabels[dimension]![label] = { share, ...(tgi !== undefined ? { tgi } : {}) };
   }
 
   if (Object.keys(platformLabels).length === 0) {

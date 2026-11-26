@@ -424,7 +424,10 @@ describe('复核补强：错误路径必须明确报错', () => {
 
   test('天猫 sheet 名不符时抛错', async () => {
     const path = await writeXlsx(join(dir, 'wrongsheet.xlsx'), '其它', [['a', 'b']]);
-    await assert.rejects(() => normalizeTmallPortrait(path, {}), /为空|sheet/);
+    await assert.rejects(
+      () => normalizeTmallPortrait(path, {}),
+      (error: unknown) => (error as { name?: string }).name === 'NormalizationError',
+    );
   });
 
   test('京东缺少必要列时抛错', async () => {
@@ -508,5 +511,140 @@ describe('复核补强：错误路径覆盖矩阵补全', () => {
     const power = portrait.projections.spending_power;
     assert.ok(Math.abs((power?.labels['极高']?.share ?? 0) - 0.1) < 1e-9);
     assert.ok(Math.abs((power?.labels['极低']?.share ?? 0) - 0.05) < 1e-9);
+  });
+});
+
+describe('第四轮补强：错误类型与 kind 的完整断言', () => {
+  const isNormalizationError = (error: unknown, kind: string): boolean => {
+    const e = error as { name?: string; kind?: string };
+    return e?.name === 'NormalizationError' && e?.kind === kind;
+  };
+
+  test('抖音：占比列损坏但 TGI 正常时仍抛错，不伪造 share=0', () => {
+    const path = writeCsv(join(dir, 'dy-badshare.csv'), [
+      ['标签类型', '标签', 'X-占比', 'X-tgi'],
+      ['预测性别', '男', '不是数字', '90'],
+      ['预测性别', '女', '也是坏的', '120'],
+    ]);
+    assert.throws(
+      () => normalizeDouyinPortrait(path, {}),
+      (error: unknown) => isNormalizationError(error, 'parse-error'),
+    );
+  });
+
+  test('京东：占比列损坏但 TGI 正常时仍抛错', async () => {
+    const path = await jdPortraitXlsx(join(dir, 'jd-badshare.xlsx'), [
+      ['性别', '女', '不是数字', '120'],
+      ['性别', '男', '也是坏的', '85'],
+    ]);
+    await assert.rejects(
+      () => normalizeJdPortrait(path, {}),
+      (error: unknown) => isNormalizationError(error, 'parse-error'),
+    );
+  });
+
+  test('天猫：占比列全部不可解析时抛 parse-error', async () => {
+    const path = await tmallPortraitXlsx(join(dir, 'tmall-badshare.xlsx'), [
+      ['预测性别', '女', '不是数字'],
+      ['预测性别', '男', '也是坏的'],
+    ]);
+    await assert.rejects(
+      () => normalizeTmallPortrait(path, {}),
+      (error: unknown) => isNormalizationError(error, 'parse-error'),
+    );
+  });
+
+  test('天猫：部分行不可解析时记 error 级 parse-error', async () => {
+    const path = await tmallPortraitXlsx(join(dir, 'tmall-partial.xlsx'), [
+      ['预测性别', '女', '不是数字'],
+      ['预测性别', '男', '60%'],
+    ]);
+    const portrait = await normalizeTmallPortrait(path, {});
+    const issue = portrait.issues?.find((i) => i.kind === 'parse-error');
+    assert.ok(issue);
+    assert.equal(issue.severity, 'error');
+  });
+
+  test('京东：部分行不可解析时记 error 级 parse-error', async () => {
+    const path = await jdPortraitXlsx(join(dir, 'jd-partial.xlsx'), [
+      ['性别', '女', '不是数字', '120'],
+      ['性别', '男', '0.4', '85'],
+    ]);
+    const portrait = await normalizeJdPortrait(path, {});
+    const issue = portrait.issues?.find((i) => i.kind === 'parse-error');
+    assert.ok(issue);
+    assert.equal(issue.severity, 'error');
+  });
+
+  test('商品表：空表抛 parse-error', async () => {
+    const path = await writeXlsx(join(dir, 'product-empty.xlsx'), 'Sheet1', []);
+    await assert.rejects(
+      () => normalizeProductTable(path),
+      (error: unknown) => isNormalizationError(error, 'parse-error'),
+    );
+  });
+
+  test('渠道表：空表抛 parse-error', async () => {
+    const path = await writeXlsx(join(dir, 'channel-empty.xlsx'), 'Sheet1', []);
+    await assert.rejects(
+      () => normalizeChannelTable(path),
+      (error: unknown) => isNormalizationError(error, 'parse-error'),
+    );
+  });
+
+  test('商品表：缺主键列抛 missing-field', async () => {
+    const path = await writeXlsx(join(dir, 'product-nokey.xlsx'), 'Sheet1', [
+      ['吊牌价', '商品定位'],
+      ['199', 'ACCESS'],
+    ]);
+    await assert.rejects(
+      () => normalizeProductTable(path),
+      (error: unknown) => isNormalizationError(error, 'missing-field'),
+    );
+  });
+
+  test('渠道表：缺主键列抛 missing-field', async () => {
+    const path = await writeXlsx(join(dir, 'channel-nokey.xlsx'), 'Sheet1', [
+      ['店铺', '平台'],
+      ['演示旗舰店', '天猫'],
+    ]);
+    await assert.rejects(
+      () => normalizeChannelTable(path),
+      (error: unknown) => isNormalizationError(error, 'missing-field'),
+    );
+  });
+
+  test('商品表：行主键为空时记 error 级 missing-field', async () => {
+    const path = await writeXlsx(join(dir, 'product-blankkey.xlsx'), 'Sheet1', [
+      ['款号', '吊牌价'],
+      ['', '199'],
+      ['SPU-OK', '299'],
+    ]);
+    const result = await normalizeProductTable(path);
+    assert.equal(result.products.length, 1);
+    const issue = result.issues.find((i) => i.kind === 'missing-field');
+    assert.ok(issue);
+    assert.equal(issue.severity, 'error');
+  });
+
+  test('渠道表：行主键为空时记 error 级 missing-field', async () => {
+    const path = await writeXlsx(join(dir, 'channel-blankkey.xlsx'), 'Sheet1', [
+      ['店铺编码', '店铺'],
+      ['', '演示店'],
+      ['D10001', '演示旗舰店'],
+    ]);
+    const result = await normalizeChannelTable(path);
+    assert.equal(result.channels.length, 1);
+    const issue = result.issues.find((i) => i.kind === 'missing-field');
+    assert.ok(issue);
+    assert.equal(issue.severity, 'error');
+  });
+
+  test('文件不存在时保留 ENOENT 语义，不包装成 parse-error', async () => {
+    const missing = join(dir, 'not-exists.xlsx');
+    await assert.rejects(
+      () => normalizeTmallPortrait(missing, {}),
+      (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT',
+    );
   });
 });
