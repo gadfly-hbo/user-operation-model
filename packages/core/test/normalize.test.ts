@@ -1,0 +1,292 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import {
+  douyinPortraitCsv,
+  jdPortraitXlsx,
+  makeTempDir,
+  tmallPortraitXlsx,
+  writeCsv,
+  writeXlsx,
+} from './helpers/fixtures.js';
+import {
+  normalizeDouyinPortrait,
+  normalizeJdPortrait,
+  normalizeTmallPortrait,
+  parseCsvRows,
+  parseMonthLabel,
+  parsePortraitEntityId,
+  normalizeProductTable,
+  normalizeChannelTable,
+  type NormalizationIssue,
+} from '../src/normalize/index.js';
+
+const dir = makeTempDir();
+
+describe('CSV 解析', () => {
+  test('跳过 BOM 与空行', () => {
+    const path = writeCsv(join(dir, 'a.csv'), [
+      ['标签类型', '标签'],
+      ['', ''],
+      ['预测性别', '女'],
+    ]);
+    const rows = parseCsvRows(path);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows[0], ['标签类型', '标签']);
+  });
+
+  test('引号内的逗号与转义引号被正确解析', () => {
+    const path = writeCsv(join(dir, 'b.csv'), [
+      ['A', 'B'],
+      ['含,逗号', '含"引号"'],
+    ]);
+    const rows = parseCsvRows(path);
+    assert.deepEqual(rows[1], ['含,逗号', '含"引号"']);
+  });
+});
+
+describe('月份与实体标识解析', () => {
+  test('解析 YYYY-MM', () => {
+    assert.equal(parseMonthLabel('2026-10'), '2026-10');
+  });
+
+  test('解析 YYM 形式', () => {
+    assert.equal(parseMonthLabel('2610'), '2026-10');
+  });
+
+  test('解析区间形式', () => {
+    assert.equal(parseMonthLabel('2507-2606'), '2025-07~2026-06');
+  });
+
+  test('无法识别的月份返回 null', () => {
+    assert.equal(parseMonthLabel('不是月份'), null);
+  });
+
+  test('从抖音列名拆出实体标识', () => {
+    const parsed = parsePortraitEntityId('2507-2606森马广州越秀区北京路店-占比');
+    assert.equal(parsed?.entityId, '森马广州越秀区北京路店');
+    assert.equal(parsed?.month, '2025-07~2026-06');
+  });
+
+  test('从款号文件名拆出实体标识', () => {
+    assert.equal(parsePortraitEntityId('101526100201')?.entityId, '101526100201');
+  });
+
+  test('从款号前缀文件名拆出实体标识', () => {
+    assert.equal(parsePortraitEntityId('款号101526100201_天猫')?.entityId, '101526100201');
+  });
+});
+
+describe('抖音画像归一化', () => {
+  const path = douyinPortraitCsv(
+    join(dir, 'douyin.csv'),
+    '演示门店',
+    '2507-2606',
+    [
+      ['预测性别', '男', '39.26%', '90.62089851674344'],
+      ['预测性别', '女', '60.74%', '144.1153984073459'],
+      ['预测年龄段', '18-19', '2.79%', '93.73368817435292'],
+      ['预测年龄段', '20-23', '9.74%', '151.2182799322709'],
+      ['预测年龄段', '24-30', '26.14%', '196.92730904578247'],
+      ['八大消费群体', '都市银发', '3.10%', '120.5'],
+      ['八大消费群体', 'genz', '8.20%', '133.3'],
+      ['预测消费能力', '高消费', '10.00%', '110.0'],
+      ['城市等级', '新一线城市', '5.00%', '105.0'],
+      ['预测人生阶段', '单身一族', '20.00%', '95.0'],
+      ['预测用户星座', '天秤座', '4.00%', '88.0'],
+    ],
+  );
+
+  const portrait = normalizeDouyinPortrait(path, { entityType: 'channel' });
+
+  test('平台原生标签被完整保留', () => {
+    const raw = portrait.platformLabels.douyin;
+    assert.ok(raw, '缺少抖音原生标签');
+    assert.equal(raw['预测性别']?.['男']?.share, 0.3926);
+    assert.equal(raw['八大消费群体']?.['都市银发']?.share, 0.031);
+    assert.equal(raw['预测性别']?.['男']?.tgi, 90.62089851674344);
+  });
+
+  test('性别投影到统一维度', () => {
+    assert.ok(Math.abs((portrait.projections.gender?.labels['男']?.share ?? 0) - 0.3926) < 1e-9);
+    assert.ok(Math.abs((portrait.projections.gender?.labels['女']?.share ?? 0) - 0.6074) < 1e-9);
+  });
+
+  test('年龄段按统一档位合并占比', () => {
+    const age = portrait.projections.age;
+    assert.ok(age, '缺少年龄投影');
+    const total = age.labels['18-23']?.share ?? 0;
+    assert.ok(Math.abs(total - 0.1253) < 1e-9, `18-23 档应为 0.1253，实际 ${total}`);
+    assert.ok(
+      Math.abs((age.labels['24-30']?.share ?? 0) - 0.2614) < 1e-9,
+      '24-30 档应直接等于源档占比',
+    );
+  });
+
+  test('策略人群按统一词表投影', () => {
+    const seg = portrait.projections.strategy_segment;
+    assert.ok(Math.abs((seg?.labels['银发族']?.share ?? 0) - 0.031) < 1e-9);
+    assert.ok(Math.abs((seg?.labels['Z世代']?.share ?? 0) - 0.082) < 1e-9);
+    assert.equal(seg?.labels['都市银发'], undefined, '不应保留平台原值作为统一标签');
+  });
+
+  test('未映射的原生维度不投影但保留在原生标签中', () => {
+    assert.equal(portrait.projections.user_constellation, undefined);
+    assert.ok(portrait.platformLabels.douyin?.['预测用户星座']);
+  });
+
+  test('未映射标签被记为归一化问题', () => {
+    const issues: NormalizationIssue[] = portrait.issues ?? [];
+    assert.ok(
+      issues.some((i) => i.kind === 'unmapped-dimension' && i.sourceDimension === '预测用户星座'),
+      '缺少未映射维度的问题记录',
+    );
+  });
+});
+
+const tmallPath = await tmallPortraitXlsx(join(dir, 'tmall.xlsx'), [
+  ['预测性别', '女', '71.20%'],
+  ['预测性别', '男', '28.68%'],
+  ['预测年龄', '[18,24]', '30.00%'],
+  ['预测年龄', '[25,29]', '20.00%'],
+  ['预测年龄', '[30,34]', '10.00%'],
+  ['大快消策略人群', '都市银发族', '5.00%'],
+  ['大服饰策略人群', '潮流人群', '7.00%'],
+  ['预测城市等级', '1', '12.00%'],
+]);
+
+const tmallPortrait = await normalizeTmallPortrait(tmallPath, { entityType: 'channel' });
+
+describe('天猫画像归一化', () => {
+  const portrait = tmallPortrait;
+
+  test('天猫无 TGI，不补零', () => {
+    const raw = portrait.platformLabels.tmall;
+    assert.ok(raw);
+    assert.equal(raw['预测性别']?.['女']?.tgi, undefined);
+  });
+
+  test('跨边界的年龄档标记精度损失', () => {
+    const age = portrait.projections.age;
+    assert.equal(age?.precisionLoss, true);
+    assert.ok(age?.lossySources?.includes('[18,24]'));
+    assert.ok(age?.lossySources?.includes('[30,34]'));
+  });
+
+  test('服饰体系独立投影，不与泛人群混同', () => {
+    assert.ok(
+      Math.abs((portrait.projections.apparel_segment?.labels['潮流人群']?.share ?? 0) - 0.07) < 1e-9,
+    );
+    assert.equal(portrait.projections.strategy_segment?.labels['潮流人群'], undefined);
+    assert.equal(portrait.projections.strategy_segment?.labels['银发族']?.share, 0.05);
+  });
+});
+
+const jdPath = await jdPortraitXlsx(join(dir, 'jd.xlsx'), [
+  ['性别', '女', '0.6', '120'],
+  ['性别', '男', '0.4', '85'],
+  ['年龄', '0~15岁', '0.02', '30'],
+  ['年龄', '21~25岁', '0.08', '110'],
+  ['年龄', '26~30岁', '0.15', '130'],
+  ['十大靶群', '都市Z世代', '0.09', '140'],
+  ['购买力', '极高', '0.11', '125'],
+  ['城市线级', '一线', '0.2', '160'],
+]);
+
+const jdPortrait = await normalizeJdPortrait(jdPath, { entityType: 'channel' });
+
+describe('京东画像归一化', () => {
+  const portrait = jdPortrait;
+
+  test('占比已是小数时不做二次换算', () => {
+    assert.equal(portrait.projections.gender?.labels['女']?.share, 0.6);
+  });
+
+  test('无对应的年龄档不并入任何目标档', () => {
+    const age = portrait.projections.age;
+    assert.equal(age?.labels['18-23']?.share, 0.08);
+    assert.equal(age?.labels['24-30']?.share, 0.15);
+    const unmapped = portrait.issues?.find((i) => i.kind === 'unmapped-value');
+    assert.ok(unmapped, '缺少未映射取值的问题记录');
+  });
+
+  test('京东策略人群投影到统一词表', () => {
+    assert.ok(
+      Math.abs((portrait.projections.strategy_segment?.labels['Z世代']?.share ?? 0) - 0.09) < 1e-9,
+    );
+  });
+});
+
+const productPath = await writeXlsx(join(dir, 'products.xlsx'), 'Sheet1', [
+  ['款号', '商品品牌', '新老品', '年份', '中类', '小类', '吊牌价', '天猫id', '年龄段', '商品定位', '推广群组', '未知新列'],
+  ['SPU-TEST-001', '演示品牌', '新品', '2026', '短袖T恤', 'T恤', '199', '123456', '18-24岁', 'ACCESS', 'A组', 'xx'],
+  ['SPU-TEST-001', '演示品牌', '新品', '2026', '短袖T恤', 'T恤', '199', '123456', '18-24岁', 'ACCESS', 'A组', 'yy'],
+  ['SPU-TEST-002', '演示品牌', '新品', '2026', '羽绒服', '短羽绒服', '599', '789012', '25-30岁', 'CORE', 'B组', 'zz'],
+]);
+
+const productResult = await normalizeProductTable(productPath);
+
+describe('商品宽表归一化', () => {
+  const result = productResult;
+
+  test('SKU 级数据去重到款号级', () => {
+    assert.equal(result.products.length, 2);
+  });
+
+  test('字段目录驱动的字段被正确落位', () => {
+    const tshirt = result.products.find((p) => p.attributes?.['category_l3']?.includes('T恤'));
+    assert.ok(tshirt);
+    assert.equal(tshirt.price?.tagPrice, 199);
+    assert.ok(tshirt.attributes?.['platform_product_id']?.includes('123456'));
+  });
+
+  test('人工定位字段不进入预测可见的属性集', () => {
+    const tshirt = result.products[0];
+    assert.ok(tshirt);
+    assert.equal(
+      tshirt.predictionAttributes?.['target_age'],
+      undefined,
+      '人工字段不应出现在预测可见属性中',
+    );
+    assert.deepEqual(tshirt.comparisonOnly?.['target_age'], ['18-24岁']);
+    assert.deepEqual(tshirt.comparisonOnly?.['product_positioning'], ['ACCESS']);
+  });
+
+  test('未知列不丢失，进入 extra', () => {
+    const tshirt = result.products[0];
+    assert.ok(tshirt);
+    assert.ok('未知新列' in (tshirt.extra ?? {}), '未知列应进入 extra');
+  });
+
+  test('预测属性集合不含人工字段', () => {
+    for (const product of result.products) {
+      for (const key of Object.keys(product.predictionAttributes ?? {})) {
+        assert.ok(
+          !['target_age', 'product_positioning', 'promo_group', 'product_group', 'scene'].includes(key),
+          `${key} 不应出现在预测属性中`,
+        );
+      }
+    }
+  });
+});
+
+const channelPath = await writeXlsx(join(dir, 'channels.xlsx'), 'Sheet1', [
+  ['渠道品牌', '一级渠道', '店铺编码', '店铺', '平台', '渠道类型', '渠道等级', '城市', '门店状态', '开店时间'],
+  ['演示品牌', '搜索渠道', 'D10001', '演示天猫旗舰店', '天猫', '天猫', '旗舰店', '上海', '营业', '2020-01-01'],
+  ['演示品牌', '内容渠道', 'D20001', '演示抖音账号', '抖音', '抖音', '核心店', '广州', '营业', '2021-06-01'],
+]);
+
+const channelResult = await normalizeChannelTable(channelPath);
+
+describe('渠道宽表归一化', () => {
+  const result = channelResult;
+
+  test('解析出渠道记录', () => {
+    assert.equal(result.channels.length, 2);
+    const tmall = result.channels.find((c) => c.platform === '天猫');
+    assert.equal(tmall?.channelId, 'D10001');
+    assert.equal(tmall?.channelType, '天猫');
+    assert.equal(tmall?.channelGrade, '旗舰店');
+    assert.equal(tmall?.city, '上海');
+  });
+});

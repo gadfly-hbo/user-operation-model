@@ -1,0 +1,45 @@
+import ExcelJS from 'exceljs';
+
+/** 读 XLSX 的首个 sheet（或指定 sheet），返回二维字符串数组。 */
+export async function readXlsxRows(path: string, sheetName?: string): Promise<string[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(path);
+  const sheet = sheetName
+    ? workbook.getWorksheet(sheetName)
+    : workbook.worksheets[0];
+  if (!sheet) return [];
+
+  const rows: string[][] = [];
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    const values = row.values as unknown[];
+    const cells: string[] = [];
+    // exceljs 的 row.values 下标 0 为空，占位从 1 开始
+    for (let i = 1; i < values.length; i += 1) cells.push(cellToString(values[i]));
+    rows.push(cells);
+  });
+  return rows;
+}
+
+function cellToString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object') {
+    const rich = value as { richText?: { text: string }[]; text?: string; result?: unknown };
+    if (Array.isArray(rich.richText)) return rich.richText.map((r) => r.text).join('');
+    if (typeof rich.text === 'string') return rich.text;
+    if (rich.result !== undefined) return String(rich.result);
+    return '';
+  }
+  return String(value);
+}
+
+/**
+ * 找到表头行：首个包含指定关键字之一的行。
+ * 京东导出首行是合并单元格标题（如「人群=xxx」），需要跳过。
+ */
+export function findHeaderRow(rows: string[][], keywords: string[]): number {
+  const index = rows.findIndex((row) =>
+    row.some((cell) => keywords.some((keyword) => cell.trim() === keyword)),
+  );
+  return index === -1 ? 0 : index;
+}

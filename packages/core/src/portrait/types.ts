@@ -12,6 +12,15 @@ export type DimensionId = string;
 /** 数据来源平台标识。新增平台在 dimensions 目录登记即可。 */
 export type PlatformId = string;
 
+/** 投影模式。 */
+export type ProjectionMode =
+  /** 按跨平台映射表对齐到统一词表 */
+  | 'mapping'
+  /** 按有序分档归并规则投影 */
+  | 'bands'
+  /** 沿用平台原值，仅归并维度 */
+  | 'identity';
+
 /** 维度取值形态。 */
 export type DimensionKind =
   /** 无序分类，如性别 */
@@ -21,16 +30,11 @@ export type DimensionKind =
   /** 连续数值 */
   | 'numeric';
 
-/** 画像实体类型。 */
-export type EntityType =
-  | 'product'
-  | 'channel'
-  | 'brand'
-  | 'category'
-  | 'series'
-  | 'ip'
-  | 'competitor'
-  | 'mall';
+/**
+ * 画像实体类型。开放字符串：新增实体类型无需改此处。
+ * 约定值：product / channel / brand / category / series / ip / competitor / mall
+ */
+export type EntityType = string;
 
 /** 单个标签的占比与相对偏好度。 */
 export interface PortraitLabel {
@@ -58,8 +62,11 @@ export interface Portrait {
   entityId: string;
   /** 数据月份 YYYY-MM。 */
   month: string;
-  /** 平台原生标签，按平台分组完整保留，不做投影、不丢信息。 */
-  platformLabels: Record<PlatformId, Record<string, PortraitLabel>>;
+  /**
+   * 平台原生标签，按 `平台 → 原生维度 → 标签值` 三层分组完整保留，
+   * 不做投影、不丢信息。
+   */
+  platformLabels: Record<PlatformId, Record<string, Record<string, PortraitLabel>>>;
   /** 统一维度投影。 */
   projections: Record<DimensionId, PortraitProjection>;
   /** 样本量。 */
@@ -78,8 +85,24 @@ export interface DimensionSpec {
   core: boolean;
   /** 提供该维度原生字段的平台。 */
   platforms: PlatformId[];
+  /**
+   * 各平台的**原生维度名**。用于把平台原始字段定位到统一维度。
+   */
+  sourceDimensions?: Partial<Record<PlatformId, string[]>>;
+  /**
+   * 各平台的原生维度名**通配模式**（`*` 匹配任意串）。
+   * 用于覆盖无法穷举的同族维度，如天猫各品类「…价格段偏好」。
+   */
+  sourceDimensionPatterns?: Partial<Record<PlatformId, string[]>>;
   /** 目标标签词表。有序维度须按值从低到高排列。 */
   labels?: string[];
+  /** 投影模式。 */
+  projection: ProjectionMode;
+  /**
+   * 体系族。用于强制「泛人群体系」与「服饰体系」不得互转。
+   * 未声明族号的维度不参与互转检查。
+   */
+  family?: string;
   description?: string;
 }
 

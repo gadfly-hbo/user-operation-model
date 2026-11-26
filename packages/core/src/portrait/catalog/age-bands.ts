@@ -7,8 +7,12 @@ import type { BandRule } from '../types.js';
  *
  * 这是**数据**不是逻辑：新增平台或调整档位边界只需在此追加或修改条目。
  *
- * 已知的跨平台边界冲突：50 岁在抖音归入 41-50、在天猫归入 50+，
- * 两者不可调和。规则中如实标记 partial，不做人为统一。
+ * 已知的跨平台边界冲突：**50 岁**在抖音与京东归入 41-50、在天猫归入 50+，
+ * 两者不可调和。凡受此影响的源档位一律标 partial 并在 note 写明，
+ * 不做人为统一，也不做静默取一。
+ *
+ * 另一类损失方向相反：**下界以下**（如京东 16~20 岁中的 16-17 岁）
+ * 在统一词表中没有落点，因此这类规则没有 spill，只标 partial 并写明缺口。
  */
 export const AGE_BAND_RULES: BandRule[] = [
   // ── 抖音：10 档，边界与统一档位基本对齐 ────────────────────
@@ -22,8 +26,8 @@ export const AGE_BAND_RULES: BandRule[] = [
     platform: 'douyin',
     sourceBand: '46-50',
     targetBand: '41-50',
-    precision: 'exact',
-    note: '50 岁在抖音计入 41-50，与天猫口径冲突',
+    precision: 'partial',
+    note: '50 岁在抖音计入 41-50，在天猫计入 50+，跨平台口径冲突',
   },
   { platform: 'douyin', sourceBand: '51-55', targetBand: '50+', precision: 'exact' },
   { platform: 'douyin', sourceBand: '56-59', targetBand: '50+', precision: 'exact' },
@@ -81,8 +85,7 @@ export const AGE_BAND_RULES: BandRule[] = [
     sourceBand: '16~20岁',
     targetBand: '18-23',
     precision: 'partial',
-    spill: '24-30',
-    note: '16-17 岁不在统一档位范围内',
+    note: '闭区间下界 16-17 岁低于统一档位下界，在统一词表中无落点；上界 20 岁落在 18-23',
   },
   {
     platform: 'jd',
@@ -96,7 +99,13 @@ export const AGE_BAND_RULES: BandRule[] = [
   { platform: 'jd', sourceBand: '31~35岁', targetBand: '31-40', precision: 'exact' },
   { platform: 'jd', sourceBand: '36~40岁', targetBand: '31-40', precision: 'exact' },
   { platform: 'jd', sourceBand: '41~45岁', targetBand: '41-50', precision: 'exact' },
-  { platform: 'jd', sourceBand: '46~50岁', targetBand: '41-50', precision: 'exact' },
+  {
+    platform: 'jd',
+    sourceBand: '46~50岁',
+    targetBand: '41-50',
+    precision: 'partial',
+    note: '50 岁在京东计入 41-50，在天猫计入 50+，跨平台口径冲突',
+  },
   { platform: 'jd', sourceBand: '51~55岁', targetBand: '50+', precision: 'exact' },
   { platform: 'jd', sourceBand: '56~60岁', targetBand: '50+', precision: 'exact' },
   { platform: 'jd', sourceBand: '61~65岁', targetBand: '50+', precision: 'exact' },

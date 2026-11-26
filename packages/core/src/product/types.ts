@@ -92,6 +92,16 @@ export interface ProductDossier {
   fab?: FabInfo;
   /** 客观属性集合，键取自字段目录。 */
   attributes?: Record<string, string[]>;
+  /**
+   * 预测路径可见的客观属性子集。
+   * 由字段目录的 `usage` 推导，与 `attributes` 的区别是不含任何人工定位字段。
+   */
+  predictionAttributes?: Record<string, string[]>;
+  /**
+   * 仅比对层可见的人工定位字段。
+   * 背对背隔离约束下，这些字段不得进入预测路径。
+   */
+  comparisonOnly?: Record<string, string[]>;
   portrait?: { month: string };
   funnel?: FunnelMetrics[];
   performance?: PerformanceMetrics;
