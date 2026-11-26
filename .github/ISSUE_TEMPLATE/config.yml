@@ -1,0 +1,8 @@
+name: 配置
+contact_links:
+  - name: 工程规范
+    url: https://github.com/gadfly-hbo/user-operation-model/blob/main/docs/engineering-workflow.md
+    about: 开发流程的唯一详细来源
+  - name: 产品讨论稿
+    url: https://github.com/gadfly-hbo/user-operation-model/blob/main/docs/%E4%BA%A7%E5%93%81%E8%AE%A8%E8%AE%BA%E7%A8%BF-v0.1.md
+    about: 产品方向、范围与架构决策

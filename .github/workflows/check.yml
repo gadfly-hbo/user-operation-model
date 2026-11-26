@@ -1,0 +1,117 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: 数据不出网守卫
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 检查索引中无业务数据
+        run: python3 .github/scripts/check-data-guard.py .
+
+  check:
+    name: 校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 选定校验范围
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base=
+          case "$EVENT_NAME" in
+            pull_request)
+              base=$(git merge-base --all "$EVENT_BASE" HEAD) || base=
+              ;;
+            push)
+              if git merge-base --is-ancestor "$EVENT_BASE" HEAD; then
+                base="$EVENT_BASE"
+              fi
+              ;;
+          esac
+
+          mode=full
+          docs=()
+          changes="$RUNNER_TEMP/check-changes"
+          if [[ "$base" =~ ^[0-9a-f]{40}$ ]] &&
+             git diff --raw -z --no-renames --ignore-submodules=none "$base" HEAD -- > "$changes"; then
+            while IFS= read -r -d '' entry && IFS= read -r -d '' path; do
+              # 仅"修改已有常规 Markdown 文件"才可走文档模式。
+              if [[ "$entry" != ':100644 100644 '*" M" ]]; then
+                docs=()
+                break
+              fi
+              case "$path" in
+                AGENTS.md|README.md)
+                  docs+=("$path")
+                  ;;
+                docs/*.md|openspec/README.md|openspec/changes/*/*.md)
+                  docs+=("$path")
+                  ;;
+                *) docs=(); break ;;
+              esac
+            done < "$changes"
+          fi
+
+          if (( ${#docs[@]} > 0 )); then
+            mode=docs
+            printf '文档差异与 UTF-8 检查: %s\n' "${docs[@]}"
+          fi
+          printf '校验范围: %s\n' "$mode"
+          printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+          printf 'base=%s\n' "$base" >> "$GITHUB_OUTPUT"
+
+      - name: 差异格式检查
+        if: steps.scope.outputs.mode == 'docs' && steps.scope.outputs.base != ''
+        run: git diff --check "${{ steps.scope.outputs.base }}" HEAD --
+
+      - name: Markdown 相对链接检查
+        if: steps.scope.outputs.mode == 'docs'
+        run: python3 .github/scripts/check-docs-links.py .
+
+      - name: 准备 Node
+        id: node
+        if: steps.scope.outputs.mode != 'docs' && hashFiles('package-lock.json') != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.19.0'
+          cache: npm
+
+      - name: 安装依赖
+        if: steps.scope.outputs.mode != 'docs' && hashFiles('package-lock.json') != ''
+        run: npm ci --ignore-scripts
+
+      - name: 运行检查
+        if: steps.scope.outputs.mode != 'docs' && hashFiles('package-lock.json') != ''
+        run: npm run check
+
+      - name: 依赖审计
+        if: steps.scope.outputs.mode != 'docs' && hashFiles('package-lock.json') != ''
+        run: npm audit --audit-level=high
+
+      - name: 尚未初始化代码
+        if: steps.scope.outputs.mode != 'docs' && hashFiles('package-lock.json') == ''
+        run: |
+          echo "::warning::仓库尚无 package-lock.json，运行时检查标记为 SKIPPED（不是 PASS）"
+          echo "SKIPPED: 无锁文件，未执行 npm ci / npm run check / npm audit"

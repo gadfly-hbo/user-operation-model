@@ -1,0 +1,34 @@
+name: 问题反馈
+description: 报告本项目工具、数据 MCP 或报表的实际异常。
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **不要在 Issue 中粘贴业务数据**。复现请描述文件路径、字段名与行号范围，样例用脱敏后的最小片段。
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 实际现象
+      description: 期望结果与实际结果的差异。附上实际执行的命令或入口。
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与版本
+      description: 操作系统、Node 版本、工具版本或提交 SHA、使用的本地数据月份范围。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 从干净入口开始的最小复现路径，含失败输出。未知项如实标注。
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影响范围
+      description: 是否影响数据正确性、评分口径、报表结论。哪条需求／阶段受影响。
