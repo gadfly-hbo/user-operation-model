@@ -35,9 +35,34 @@
 | 商品宽表归一化（SKU 去重、字段目录驱动、背对背隔离） | `packages/core/src/normalize/product.ts` |
 | 渠道宽表归一化 | `packages/core/src/normalize/channel.ts` |
 
+### P0-5 数据 MCP —— 已完成
+
+| 交付物 | 路径 |
+| --- | --- |
+| 索引构建（扫描数据目录 → 只读索引） | `packages/core/src/index/build.ts` |
+| 查询原语（检索、标签反查、相似款、聚合、对比） | `packages/core/src/index/query.ts` |
+| 分布相似度（JS 散度／距离、余弦、Top3 重合） | `packages/core/src/index/similarity.ts` |
+| 索引类型 | `packages/core/src/index/types.ts` |
+| MCP server（17 个工具注册） | `packages/data-mcp/src/server.ts` |
+| 统一返回信封与错误类型 | `packages/data-mcp/src/result.ts` |
+| stdio 入口 | `packages/data-mcp/src/bin.ts` |
+| 使用说明 | `docs/mcp-usage.md` |
+
+**依赖**：`@modelcontextprotocol/server@2.4.0` + `zod@4.6.7`。**未采用 SDK v1**：v1 依赖 zod 3.x，而 zod < 4.6.6 有 high 级漏洞（GHSA-mrhx-c7xc-m3w5），CI 的 `npm audit --audit-level=high` 无法通过。v2 已拆包名为 `@modelcontextprotocol/server`，协议向后兼容。审计 **0 漏洞**。
+
 ### 样例数据已就位
 
 `data/domains/` 下 12 个业务域、29 个文件（3.6 MiB）。数据留在本地，未入库。
+
+### P0-5 的关键设计决定
+
+| 决定 | 理由 |
+| --- | --- |
+| **匹配分不进 MCP** | `compare_product_channel` 只返回差异（Top3、JS 距离、余弦、Top3 重合）。评分与评级属 P1 匹配内核，避免出现第二份评分口径（§9.1） |
+| **数据未就位返回明确错误** | 7 个缺数据的工具返回 `data-not-ready` 并指明缺哪个文件，**不返回空数组**。空结果与数据缺失必须可区分（DM13） |
+| **数据源探测而非硬编码** | 工具可用性由数据目录探测决定，文件到位后自动可用，不改代码 |
+| **对外用店铺编码，内部关联门店名** | 画像文件按「品牌+门店名」命名，渠道宽表主键是店铺编码；内部通过 `店铺` 字段关联 |
+| **索引不落库** | 索引在进程启动时构建于内存，不写 git，不产生数据副本 |
 
 ## 2. 任务清单状态
 
@@ -47,9 +72,9 @@
 | P0-2 | 统一维度集与类型定义 | **PASS** | §1 + 两轮独立复核 |
 | P0-3 | 归一化规则文档 | **PASS** | `docs/normalize-rules.md` |
 | P0-4 | 归一化实现 | **PASS** | §1；79 例单测 + 真实数据端到端（§4） |
-| P0-5 | MCP server 与 16 个工具 | NOT_RUN | 本轮未开始 |
-| P0-6 | 真实数据端到端验证 | **部分** | 归一化层已用真实数据验证（§4）；MCP 层未开始 |
-| P0-7 | 离线与数据守卫验证 | **部分** | 守卫与链接检查通过；**断网验证未做**（尚无 MCP 可断网运行） |
+| P0-5 | MCP server 与 **17** 个工具 | **PASS** | §1.5；30 例测试 + 真实数据端到端 |
+| P0-6 | 真实数据端到端验证 | **部分** | 归一化层与 MCP 层均已用真实数据验证（§4）；断网验证未做 |
+| P0-7 | 离线与数据守卫验证 | **部分** | 守卫与链接检查通过；MCP 为纯 stdio 本地进程、零网络依赖（静态证据）；**断网实跑未做** |
 | P0-8 | 独立复核与交付 | **部分** | P0-2 两轮复核完成；P0-3/P0-4 的复核结论见 §5 |
 
 ## 3. 验收条目对应
@@ -70,18 +95,34 @@
 | DM16 | **PASS** | 归并规则带 `precision`／`spill`／`sourceRange`；投影写出 `precisionLoss` 与 `lossySources`；**跨边界源档按区间重叠比例拆分** |
 | 背对背隔离（§4.4） | **部分** | 8 个人工定位字段 + `fab` 共 9 个被排除，测试覆盖 ✓；344 款商品实测泄漏 0 次；工具2 侧实际隔离属 P2 |
 
+### P0-5 的真实数据端到端结果
+
+在 `data/domains/` 实际样本上构建索引并逐个调用 17 个工具：
+
+| 项 | 结果 |
+| --- | --- |
+| 索引规模 | 商品 **344**（87 + 257）、渠道 **200**、画像 **7** |
+| 覆盖月份 | `2024-01`、`2024-07~2025-06`、`2025-07~2026-06` |
+| 可用工具 | 10 个全部返回真实数据 |
+| 未就位工具 | 7 个全部返回 `data-not-ready` 并说明缺什么 |
+| `compare_product_channel` | 在真实数据上返回逐维度差异，**不含匹配分与评级** |
+| `search_by_tag` | 命中 7 条实体 |
+| `search_similar_products` | 返回分解得分（属性 0.5 / 画像 0.5 加权） |
+| `get_portrait_aggregate` | 品类层级可用 |
+
 ## 4. 实际执行的检查
 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | 类型检查 + 构建 | `npm run build` | PASS，无错误 |
-| 单元测试 | `npm run test` | PASS，**101 例**全过，0 失败 0 跳过 |
+| 单元测试 | `npm run test` | PASS，**131 例**全过（core 101 + data-mcp 30），0 失败 0 跳过 |
 | 依赖审计 | `npm audit --audit-level=high` | PASS，**0 vulnerabilities**（`overrides` 将 uuid 提至 11.1.1） |
 | 文档链接 | `python3 .github/scripts/check-docs-links.py .` | PASS，**47 条**相对链接无错误 |
 | 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | PASS |
 | NUL 字节扫描 | 全仓库 `*.ts` / `*.json` / `*.md` | PASS，0 残留 |
 | 真实数据端到端 | 见下 | PASS |
-| 断网验证 | —— | **NOT_RUN**，无 MCP 可运行 |
+| MCP 真实 stdio 路径 | `packages/data-mcp/test/stdio.test.ts` | PASS，真实 spawn 子进程完成 initialize 与工具调用 |
+| 断网验证 | —— | **NOT_RUN**，未在断网环境实跑（server 为纯 stdio 本地进程，零网络依赖） |
 | 独立复核 | 见 §5 | 两轮完成 |
 
 ### 真实数据端到端结果
@@ -214,6 +255,27 @@
 4. **测试文件超出 spec §6**：新增 `packages/core/test/core.test.ts`、`packages/core/test/normalize.test.ts`、`packages/core/test/helpers/fixtures.ts` 三个测试文件，spec §6 的路径清单未包含测试目录。
 
 ## 7. 已知限制
+
+### P0-5 新增
+
+- **7 个工具的数据源未接入**（竞品画像、漏斗、会员特征字典、Cohort、Recency、渠道流转、诊断），接口已就绪，探测到文件即自动可用
+- **`list_products` 的 `channel` 过滤不可用**：现有数据源中商品表与渠道表**没有关联键**，商品归属哪个渠道需另提供
+- **`get_portrait_aggregate` 只支持品类层级**：系列／爆款／IP 需要聚合口径表
+- **真实数据里 7 份画像只有 1 份能关联到渠道宽表**：画像用「品牌+门店名」全称，渠道宽表用简称（如「森马广州北京路旗舰店」），且部分门店不在 200 个渠道内。这是**数据缺口**，不是实现缺陷——MCP 对外仍以稳定的店铺编码查询
+- **同一门店跨期导出名称不一致**（「森马广州越秀区北京路店」与「森马广州北京路店」并存），跨期关联需要实体别名目录，本轮未建
+- **单品画像无月份信息**（导出文件名不含月份），`get_product_portrait` 返回的 `month` 为空串
+- **P0-5 的实现先于测试写下**（与 P0-4 相反）。测试在实现之后补写，通过**变异测试**证明其有效：
+
+  | 变异 | 结果 |
+  | --- | --- |
+  | M1 `findPortrait` 改为缺月回退到最近月 | **KILLED**（1 例失败） |
+  | M2 去掉渠道实体关联（只用店铺编码查画像） | **KILLED**（3 例失败） |
+  | M3 数据未就位改为返回空结果 | **KILLED**（8 例失败） |
+  | M4 `compare_product_channel` 塞入匹配分与评级 | **KILLED**（1 例失败） |
+
+  4/4 变异全部被杀死，测试能抓住这四类回归。变异用文件备份还原，不经 git。
+
+### P0-2 / P0-4 遗留
 
 - **DM01／DM02／DM08 的索引化存储未做**：归一化产出的是内存结构，尚未落成可查询的索引文件。P0-5 随 MCP 一并处理。
 - **跨文件冲突处理（DM04）未实现**：当前单文件场景不触发；实际导入多批次数据时需要显式冲突映射表。

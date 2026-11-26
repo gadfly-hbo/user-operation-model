@@ -83,6 +83,15 @@ npm run check     # 类型检查 + 构建 + 单元测试
 | ModelEvol 归档 | `~/Dev/Archive/ModelEvol` | 工具2 的模型设计与训练管线来源 |
 | model-mlflow | `~/Dev/Projects/model-mlflow` | 模型治理账本与模型包来源 |
 
+## 数据 MCP
+
+```bash
+npm run build
+UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
+```
+
+stdio 传输、零网络请求、只读本地数据。17 个工具，其中 10 个已接入真实数据、7 个的数据源待补（返回明确错误并指明缺哪个文件）。详见 [docs/mcp-usage.md](docs/mcp-usage.md)。
+
 ## 本地检查
 
 ```bash

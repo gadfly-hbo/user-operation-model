@@ -9,3 +9,8 @@ export { FieldCatalog, allowsUsage } from './product/fields.js';
 export { PRODUCT_FIELDS } from './product/catalog/fields.js';
 
 export * from './normalize/index.js';
+
+export * from './index/types.js';
+export * from './index/build.js';
+export * from './index/query.js';
+export * from './index/similarity.js';
