@@ -12,7 +12,7 @@ P0 阶段规格：数据归一化层 + 数据 MCP
 交付 P0 阶段的两个产物，使讨论稿 §3 的「人-货-渠」统一数据契约可被调用：
 
 1. **数据归一化层** —— 把用户提供的原始导出文件转成统一画像索引与商品档案
-2. **数据 MCP** —— 以 stdio 暴露讨论稿 §3.3 的 16 个查询工具
+2. **数据 MCP** —— 以 stdio 暴露讨论稿 §3.3 的 17 个查询工具
 
 ### 本轮交付
 
@@ -223,6 +223,7 @@ openspec/changes/data-mcp-core/**
 | `list_member_features` | 会员特征字典表 |
 | `get_retention_cohort` / `get_recency_distribution` / `get_channel_flow_matrix` / `get_diagnosis` | 留存与回购数据（需求三数据） |
 | `list_products` 的 `channel` 过滤 | **商品与渠道的关联关系**：现有数据源中商品表与渠道表无关联键，商品归属渠道需另提供 |
+| DM09 样本量与覆盖率 | **源数据未提供**：抖音／天猫／京东的画像导出均无样本量与画像覆盖率字段。工具保留 `sampleSize`／`coverage` 字段，数据源到位后即可填充 |
 | `get_portrait_aggregate` 的系列／爆款／IP 层级 | 聚合口径表；品类层级可由现有商品表字段聚合 |
 
 ### 传输与依赖

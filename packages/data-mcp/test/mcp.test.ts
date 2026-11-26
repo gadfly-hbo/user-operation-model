@@ -174,9 +174,32 @@ describe('对比与检索工具', () => {
     assert.ok(data.comparedDimensions > 0);
     assert.ok(data.dimensions.every((d) => d.distance >= 0 && d.distance <= 1));
     assert.ok(data.dimensions.every((d) => d.jsSimilarity >= 0 && d.jsSimilarity <= 1));
-    const serialized = JSON.stringify(data);
-    assert.ok(!serialized.includes('totalScore'), '不应包含匹配分');
-    assert.ok(!serialized.includes('grade'), '不应包含评级');
+    // 用**结构白名单**断言，而不是匹配字面键名——
+    // 换成 matchScore / rating / score 之类的名字同样应被拦下
+    assert.deepEqual(
+      Object.keys(data).sort(),
+      [
+        'channelId',
+        'comparedDimensions',
+        'dimensions',
+        'month',
+        'onlyInChannel',
+        'onlyInProduct',
+        'spu',
+      ].filter((key) => key in data).sort(),
+    );
+    assert.deepEqual(
+      Object.keys(data.dimensions[0] ?? {}).sort(),
+      [
+        'channelTop3',
+        'cosine',
+        'dimension',
+        'distance',
+        'jsSimilarity',
+        'overlapTop3',
+        'productTop3',
+      ],
+    );
   });
 
   test('search_by_tag 按统一维度反查', async () => {

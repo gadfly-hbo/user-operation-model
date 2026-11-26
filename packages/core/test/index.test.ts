@@ -273,6 +273,64 @@ describe('相似款', () => {
   });
 });
 
+describe('平台与实体识别', () => {
+  test('文件名后缀优先于所在目录识别平台', async () => {
+    const root = await createFixtureIndexRoot();
+    const index = await buildIndex({ dataRoot: root });
+    // fixture 在「抖音」目录下同时放了抖音与天猫文件
+    const tmall = index.portraits.find((portrait) =>
+      Object.keys(portrait.platformLabels).includes('tmall'),
+    );
+    assert.ok(tmall, '应按文件名后缀识别出天猫画像');
+    const douyin = index.portraits.find((portrait) =>
+      Object.keys(portrait.platformLabels).includes('douyin'),
+    );
+    assert.ok(douyin);
+    assert.notEqual(tmall.entityId, douyin.entityId, '两份画像应可区分');
+  });
+
+  test('品牌画像文件被识别为 brand 实体，探测与索引一致', async () => {
+    const root = await createFixtureIndexRoot();
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const dir = join(root, 'domains', '01_品牌信息');
+    mkdirSync(dir, { recursive: true });
+    // 文件名含「品牌」且含「画像」→ brand 实体
+    writeFileSync(
+      join(dir, '森马品牌人群画像_抖音.csv'),
+      '﻿标签类型,标签,X-占比,X-tgi\r\n预测性别,男,40%,100\r\n',
+      'utf8',
+    );
+    const index = await buildIndex({ dataRoot: root });
+    const brand = index.portraits.find((portrait) => portrait.entityType === 'brand');
+    assert.ok(brand, '品牌画像应被索引为 brand 实体');
+    // 探测结果必须与索引能力一致：探测说就绪 → unavailable 里不能有该工具
+    assert.equal(index.unavailable['get_brand_portrait'], undefined);
+  });
+});
+
+describe('属性相似度的分母口径', () => {
+  test('多值属性下按并集分母计算', () => {
+    // 直接构造档案，不经索引（索引按款号去重，属性为单值）
+    const a = {
+      spu: 'A',
+      schemaVersion: '0.1.0',
+      attributes: { category_l3: ['T恤'] },
+    };
+    const b = {
+      spu: 'B',
+      schemaVersion: '0.1.0',
+      attributes: { category_l3: ['T恤', '长袖T恤'] },
+    };
+    // 并集 = {T恤, 长袖T恤}，交集 = {T恤} → 1/2 = 0.5
+    // 若误用「左侧集合大小」作分母（此处也是 2）结果相同；
+    // 但若用「共享 key 数」作分母（此处为 1），结果会是 1 —— 断言能区分
+    assert.ok(
+      Math.abs(attributeJaccard(a, b) - 0.5) < 1e-9,
+      `多值属性的 Jaccard 应为 0.5，实际 ${attributeJaccard(a, b)}`,
+    );
+  });
+});
+
 describe('聚合画像', () => {
   test('TGI 按占比加权平均，不是简单平均也不是首值', async () => {
     const root = await createFixtureIndexRoot();
