@@ -1,0 +1,22 @@
+{
+  "name": "user-operation-model",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "服饰零售人-货-渠人群运营模型",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test \"packages/*/dist/test/**/*.test.js\"",
+    "check": "npm run build && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

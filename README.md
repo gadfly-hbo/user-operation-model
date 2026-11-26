@@ -35,7 +35,7 @@
 │   ├── README.md                # 变更记录机制
 │   └── changes/<change-id>/     # 每项变更的 spec.md 与 result.md
 ├── packages/                    # 代码包（P0 起逐步建立）
-│   ├── core/                    # 匹配内核、维度定义、评分配置、诊断规则
+│   ├── core/                    # 统一维度集、映射表、字段目录（数据契约的单一来源）
 │   ├── data-mcp/                # MCP server（stdio）
 │   ├── tool1-channel-match/     # 规则匹配与看板
 │   ├── tool2-model-match/       # 属性→画像→匹配，含 model-mlflow 消费
@@ -43,6 +43,28 @@
 ├── models/                      # 精确版本锁定的模型包（不放权重大文件）
 └── data/                        # 本地数据（gitignore，不上云）
 ```
+
+## 本地开发
+
+```bash
+npm install
+npm run check     # 类型检查 + 构建 + 单元测试
+```
+
+## 扩展性约定
+
+`packages/core` 的目录（catalog）是**数据**，处理逻辑不硬编码字段：
+
+| 要扩展什么 | 改哪里 | 是否需要改逻辑代码 |
+| --- | --- | --- |
+| 新增画像维度 | `packages/core/src/portrait/catalog/dimensions.ts` | 否 |
+| 新增平台标签映射 | `packages/core/src/portrait/catalog/mappings.ts` | 否 |
+| 调整年龄等分档边界 | `packages/core/src/portrait/catalog/age-bands.ts` | 否 |
+| 新增商品字段 | `packages/core/src/product/catalog/fields.ts` | 否 |
+
+运行时还可直接调用 `DimensionRegistry.register()`、`MappingTable.add()`、`FieldCatalog.add()` 动态追加。
+
+未在目录登记的内容不会被丢弃：商品档案的未知字段进入 `ProductDossier.extra`，画像的未映射标签保留在 `Portrait.platformLabels`。
 
 ## 四条硬约束
 
