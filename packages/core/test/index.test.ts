@@ -277,7 +277,8 @@ describe('平台与实体识别', () => {
   test('文件名后缀优先于所在目录识别平台', async () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
-    // fixture 在「抖音」目录下同时放了抖音与天猫文件
+    // fixture 把天猫文件放在英文目录 douyin/ 下：目录说抖音、文件名说天猫，
+    // 必须按文件名判定为天猫（若按目录判定会错成抖音）
     const tmall = index.portraits.find((portrait) =>
       Object.keys(portrait.platformLabels).includes('tmall'),
     );
@@ -322,8 +323,9 @@ describe('属性相似度的分母口径', () => {
       attributes: { category_l3: ['T恤', '长袖T恤'] },
     };
     // 并集 = {T恤, 长袖T恤}，交集 = {T恤} → 1/2 = 0.5
-    // 若误用「左侧集合大小」作分母（此处也是 2）结果相同；
-    // 但若用「共享 key 数」作分母（此处为 1），结果会是 1 —— 断言能区分
+    // 若误用「共享 key 数」作分母（此处为 1），结果会是 1 —— 断言能区分
+    // （注：若误用「左侧集合大小」作分母，本例左侧也是 1，结果同样是 1，
+    //   该口径无法用本例区分；本断言锁定的是并集与共享 key 数两种口径的差异）
     assert.ok(
       Math.abs(attributeJaccard(a, b) - 0.5) < 1e-9,
       `多值属性的 Jaccard 应为 0.5，实际 ${attributeJaccard(a, b)}`,

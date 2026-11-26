@@ -78,6 +78,9 @@ export async function createFixtureIndexRoot(): Promise<string> {
   mkdirSync(join(domains, '04_商品信息'), { recursive: true });
   mkdirSync(join(domains, '02_渠道信息'), { recursive: true });
   mkdirSync(join(domains, '07_人群画像', '抖音'), { recursive: true });
+  // 英文目录：构造「目录名与文件名平台不一致」的场景，
+  // 用于锁定「文件名后缀优先于目录」的识别顺序
+  mkdirSync(join(domains, '07_人群画像', 'douyin'), { recursive: true });
 
   await writeXlsx(join(domains, '04_商品信息', '商品宽表.xlsx'), 'Sheet1', [
     ['款号', '商品品牌', '年份', '中类', '小类', '吊牌价', '天猫id', '年龄段', '商品定位'],
@@ -119,7 +122,7 @@ export async function createFixtureIndexRoot(): Promise<string> {
 
   // 同一实体同月的天猫画像（XLSX，sheet 名「明细」）：用于检验多平台命中时的确定性选择
   await writeXlsx(
-    join(domains, '07_人群画像', '抖音', '2507-2606_演示账号1画像数据_天猫.xlsx'),
+    join(domains, '07_人群画像', 'douyin', '2507-2606_演示账号1画像数据_天猫.xlsx'),
     '明细',
     [
       ['标签类型', '一级标签(标签值)', '占比'],
