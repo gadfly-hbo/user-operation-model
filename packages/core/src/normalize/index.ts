@@ -63,22 +63,44 @@ export function normalizeDouyinPortrait(
   const parsedIdentifier = parsePortraitEntityId(identifier);
 
   const platformLabels: Record<string, Record<string, PortraitLabel>> = {};
+  let unparsable = 0;
   for (const row of rows.slice(1)) {
     const dimension = row[0]?.trim();
     const label = row[1]?.trim();
     if (!dimension || !label) continue;
     const share = parseShare(row[shareColumn]);
     const tgi = parseTgi(row[tgiColumn]);
-    if (share === undefined && tgi === undefined) continue;
+    if (share === undefined && tgi === undefined) {
+      unparsable += 1;
+      continue;
+    }
     platformLabels[dimension] ??= {};
     platformLabels[dimension]![label] = share === undefined ? { share: 0, ...(tgi !== undefined ? { tgi } : {}) } : { share, ...(tgi !== undefined ? { tgi } : {}) };
+  }
+
+  if (Object.keys(platformLabels).length === 0) {
+    throw new NormalizationError(
+      'parse-error',
+      `抖音画像的占比列无法解析出任何数值（共 ${rows.length - 1} 行数据）`,
+      path,
+    );
+  }
+
+  const issues: NormalizationIssue[] = [];
+  if (unparsable > 0) {
+    issues.push({
+      kind: 'parse-error',
+      platform: 'douyin',
+      severity: 'error',
+      message: `有 ${unparsable} 行的占比与 TGI 均无法解析为数值，已跳过`,
+    });
   }
 
   return finalizePortrait('douyin', platformLabels, {
     ...options,
     entityId: options.entityId ?? parsedIdentifier?.entityId ?? '',
     month: options.month ?? parsedIdentifier?.month ?? '',
-  }, ctx);
+  }, ctx, issues);
 }
 
 /**
@@ -114,15 +136,41 @@ export async function normalizeTmallPortrait(
     );
   }
 
+  if (headerIndex >= rows.length - 1) {
+    throw new NormalizationError('parse-error', '天猫画像只有表头，没有数据行', path);
+  }
+
   const platformLabels: Record<string, Record<string, PortraitLabel>> = {};
+  let unparsable = 0;
   for (const row of rows.slice(headerIndex + 1)) {
     const dimension = row[dimensionIndex]?.trim();
     const label = row[labelIndex]?.trim();
     if (!dimension || !label) continue;
     const share = parseShare(row[shareIndex]);
-    if (share === undefined) continue;
+    if (share === undefined) {
+      unparsable += 1;
+      continue;
+    }
     platformLabels[dimension] ??= {};
     platformLabels[dimension]![label] = { share };
+  }
+
+  if (Object.keys(platformLabels).length === 0) {
+    throw new NormalizationError(
+      'parse-error',
+      `天猫画像的占比列无法解析出任何数值（共 ${rows.length - headerIndex - 1} 行数据）`,
+      path,
+    );
+  }
+
+  const issues: NormalizationIssue[] = [];
+  if (unparsable > 0) {
+    issues.push({
+      kind: 'parse-error',
+      platform: 'tmall',
+      severity: 'error',
+      message: `有 ${unparsable} 行的占比无法解析为数值，已跳过`,
+    });
   }
 
   const fromName = parseFileNameEntity(path);
@@ -130,7 +178,7 @@ export async function normalizeTmallPortrait(
     ...options,
     entityId: options.entityId ?? fromName?.entityId ?? '',
     month: options.month ?? fromName?.month ?? '',
-  }, ctx);
+  }, ctx, issues);
 }
 
 /**
@@ -164,14 +212,22 @@ export async function normalizeJdPortrait(
     );
   }
 
+  if (headerIndex >= rows.length - 1) {
+    throw new NormalizationError('parse-error', '京东画像只有表头，没有数据行', path);
+  }
+
   const platformLabels: Record<string, Record<string, PortraitLabel>> = {};
+  let unparsable = 0;
   for (const row of rows.slice(headerIndex + 1)) {
     const dimension = row[dimensionIndex]?.trim();
     const label = row[labelIndex]?.trim();
     if (!dimension || !label) continue;
     const share = parseShare(row[shareIndex]);
     const tgi = parseTgi(row[tgiIndex]);
-    if (share === undefined && tgi === undefined) continue;
+    if (share === undefined && tgi === undefined) {
+      unparsable += 1;
+      continue;
+    }
     platformLabels[dimension] ??= {};
     platformLabels[dimension]![label] = {
       share: share ?? 0,
@@ -179,12 +235,30 @@ export async function normalizeJdPortrait(
     };
   }
 
+  if (Object.keys(platformLabels).length === 0) {
+    throw new NormalizationError(
+      'parse-error',
+      `京东画像的占比列无法解析出任何数值（共 ${rows.length - headerIndex - 1} 行数据）`,
+      path,
+    );
+  }
+
+  const issues: NormalizationIssue[] = [];
+  if (unparsable > 0) {
+    issues.push({
+      kind: 'parse-error',
+      platform: 'jd',
+      severity: 'error',
+      message: `有 ${unparsable} 行的占比与 TGI 均无法解析为数值，已跳过`,
+    });
+  }
+
   const fromName = parseFileNameEntity(path);
   return finalizePortrait('jd', platformLabels, {
     ...options,
     entityId: options.entityId ?? fromName?.entityId ?? '',
     month: options.month ?? fromName?.month ?? '',
-  }, ctx);
+  }, ctx, issues);
 }
 
 function finalizePortrait(
@@ -192,6 +266,7 @@ function finalizePortrait(
   platformLabels: Record<string, Record<string, PortraitLabel>>,
   options: NormalizeOptions,
   ctx: ProjectContext,
+  extraIssues: NormalizationIssue[] = [],
 ): NormalizedPortrait {
   const { projections, issues } = projectPortraitLabels(platform, platformLabels, ctx);
   return {
@@ -200,7 +275,7 @@ function finalizePortrait(
     month: options.month ?? '',
     platformLabels: { [platform]: platformLabels },
     projections,
-    issues,
+    issues: [...extraIssues, ...issues],
   };
 }
 

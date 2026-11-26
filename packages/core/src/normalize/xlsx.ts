@@ -1,9 +1,18 @@
 import ExcelJS from 'exceljs';
+import { NormalizationError } from './types.js';
 
 /** 读 XLSX 的首个 sheet（或指定 sheet），返回二维字符串数组。 */
 export async function readXlsxRows(path: string, sheetName?: string): Promise<string[][]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(path);
+  try {
+    await workbook.xlsx.readFile(path);
+  } catch (error) {
+    throw new NormalizationError(
+      'parse-error',
+      `XLSX 无法解析：${(error as Error).message}`,
+      path,
+    );
+  }
   const sheet = sheetName
     ? workbook.getWorksheet(sheetName)
     : workbook.worksheets[0];

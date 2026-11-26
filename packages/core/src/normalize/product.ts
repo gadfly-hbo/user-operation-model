@@ -1,6 +1,7 @@
 import type { FieldSpec } from '../product/types.js';
 import { FieldCatalog } from '../product/fields.js';
 import type { ProductDossier } from '../product/types.js';
+import { NormalizationError } from './types.js';
 import type { NormalizationIssue, ProductNormalizationResult } from './types.js';
 import { readXlsxRows } from './xlsx.js';
 import { parseNumber } from './values.js';
@@ -19,7 +20,12 @@ export async function normalizeProductTable(
 ): Promise<ProductNormalizationResult> {
   const issues: NormalizationIssue[] = [];
   const rows = await readXlsxRows(path);
-  if (rows.length < 2) return { products: [], issues };
+  if (rows.length === 0) {
+    throw new NormalizationError('parse-error', '商品表为空、sheet 不存在或无法解析', path);
+  }
+  if (rows.length < 2) {
+    throw new NormalizationError('parse-error', '商品表只有表头，没有数据行', path);
+  }
 
   const header = rows[0]!.map((cell) => cell.trim());
   const columnFields = new Map<number, FieldSpec>();
@@ -31,12 +37,7 @@ export async function normalizeProductTable(
 
   const spuIndex = findIndexOfKey(columnFields, 'spu');
   if (spuIndex === undefined) {
-    issues.push({
-      kind: 'missing-field',
-      severity: 'error',
-      message: '商品表缺少款号列，无法确定主键',
-    });
-    return { products: [], issues };
+    throw new NormalizationError('missing-field', '商品表缺少款号列，无法确定主键', path);
   }
 
   const seen = new Map<string, number>();
@@ -45,7 +46,15 @@ export async function normalizeProductTable(
   for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex]!;
     const spu = row[spuIndex]?.trim();
-    if (!spu) continue;
+    if (!spu) {
+      issues.push({
+        kind: 'missing-field',
+        severity: 'error',
+        sourceLabel: `第 ${rowIndex + 1} 行`,
+        message: '该行款号为空，已跳过',
+      });
+      continue;
+    }
 
     if (seen.has(spu)) {
       issues.push({

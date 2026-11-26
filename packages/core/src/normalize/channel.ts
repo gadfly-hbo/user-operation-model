@@ -1,3 +1,4 @@
+import { NormalizationError } from './types.js';
 import type { ChannelNormalizationResult, ChannelRecord, NormalizationIssue } from './types.js';
 import { readXlsxRows } from './xlsx.js';
 
@@ -27,23 +28,30 @@ const COLUMN_MAP: Record<string, keyof ChannelRecord> = {
 export async function normalizeChannelTable(path: string): Promise<ChannelNormalizationResult> {
   const issues: NormalizationIssue[] = [];
   const rows = await readXlsxRows(path);
-  if (rows.length < 2) return { channels: [], issues };
+  if (rows.length === 0) {
+    throw new NormalizationError('parse-error', '渠道表为空、sheet 不存在或无法解析', path);
+  }
+  if (rows.length < 2) {
+    throw new NormalizationError('parse-error', '渠道表只有表头，没有数据行', path);
+  }
 
   const header = rows[0]!.map((cell) => cell.trim());
   const channelIdIndex = header.findIndex((column) => column === '店铺编码');
   if (channelIdIndex === -1) {
-    issues.push({
-      kind: 'missing-field',
-      severity: 'error',
-      message: '渠道表缺少店铺编码列，无法确定主键',
-    });
-    return { channels: [], issues };
+    throw new NormalizationError('missing-field', '渠道表缺少店铺编码列，无法确定主键', path);
   }
 
   const channels: ChannelRecord[] = [];
   for (const row of rows.slice(1)) {
     const channelId = row[channelIdIndex]?.trim();
-    if (!channelId) continue;
+    if (!channelId) {
+      issues.push({
+        kind: 'missing-field',
+        severity: 'error',
+        message: '该行店铺编码为空，已跳过',
+      });
+      continue;
+    }
 
     const record: ChannelRecord = { channelId };
     const attributes: Record<string, string> = {};

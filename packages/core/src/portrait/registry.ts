@@ -196,9 +196,14 @@ export class MappingTable {
     if (target.labels && !target.labels.includes(mapping.targetLabel)) {
       problems.push(`目标标签不在维度 ${target.id} 词表内: ${mapping.targetLabel}`);
     }
-    // 禁止跨体系互转。源维度与目标维度必须属于同一体系族。
+    // 源维度必须已在维度目录登记，否则无法判定体系族，禁止入库。
     const sourceSpec = registry.findBySourceDimension(mapping.platform, mapping.sourceDimension);
-    if (sourceSpec?.family && target.family && sourceSpec.family !== target.family) {
+    if (!sourceSpec) {
+      problems.push(
+        `源维度未登记: ${mapping.platform}/${mapping.sourceDimension}`,
+      );
+    } else if (sourceSpec.family && target.family && sourceSpec.family !== target.family) {
+      // 禁止跨体系互转
       problems.push(
         `跨体系互转：源维度 ${sourceSpec.id}(${sourceSpec.family}) → 目标维度 ${target.id}(${target.family})`,
       );

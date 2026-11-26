@@ -7,3 +7,5 @@ export { AGE_BAND_RULES, UNIFIED_AGE_BANDS } from './portrait/catalog/age-bands.
 export * from './product/types.js';
 export { FieldCatalog, allowsUsage } from './product/fields.js';
 export { PRODUCT_FIELDS } from './product/catalog/fields.js';
+
+export * from './normalize/index.js';

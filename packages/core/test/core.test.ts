@@ -90,10 +90,35 @@ describe('跨平台标签映射', () => {
     }
   });
 
-  test('待确认的映射不参与解析', () => {
+  test('已确认的映射参与解析', () => {
     const table = new MappingTable();
-    assert.equal(table.resolve('tmall', '预测购买力', 'L3'), undefined);
-    assert.equal(table.resolveAll('tmall', '预测购买力', 'L3').length, 1);
+    // 天猫 L1–L5 方向已由用户确认（2026-11-26）：L1 最低、L5 最高
+    assert.equal(table.resolve('tmall', '预测购买力', 'L3')?.targetLabel, '中');
+    assert.equal(table.resolve('tmall', '预测购买力', 'L1')?.targetLabel, '极低');
+    assert.equal(table.resolve('tmall', '预测购买力', 'L5')?.targetLabel, '极高');
+  });
+
+  test('当前没有待确认的映射', () => {
+    const pending = TAG_MAPPINGS.filter((m) => m.status === 'needs-confirmation');
+    assert.deepEqual(pending.map((m) => m.id), []);
+  });
+
+  test('源维度未登记的映射被拒绝', () => {
+    const table = new MappingTable();
+    assert.throws(
+      () =>
+        table.add({
+          id: 'unknown.source',
+          platform: 'douyin',
+          sourceDimension: '未登记的维度',
+          sourceLabel: '甲',
+          targetDimension: 'gender',
+          targetLabel: '女',
+          confidence: 'manual',
+          status: 'confirmed',
+        }),
+      /源维度未登记/,
+    );
   });
 
   test('已确认的映射可被解析', () => {
@@ -244,14 +269,14 @@ describe('可扩展性', () => {
     table.add({
       id: 'custom.map',
       platform: 'douyin',
-      sourceDimension: '自定义维度',
-      sourceLabel: '甲',
+      sourceDimension: '预测性别',
+      sourceLabel: '女',
       targetDimension: 'gender',
       targetLabel: '女',
-      confidence: 'manual',
+      confidence: 'exact',
       status: 'confirmed',
     });
-    assert.equal(table.resolve('douyin', '自定义维度', '甲')?.targetLabel, '女');
+    assert.equal(table.resolve('douyin', '预测性别', '女')?.targetLabel, '女');
   });
 
   test('可运行时追加商品字段', () => {
@@ -281,7 +306,7 @@ describe('目录规模', () => {
     assert.equal(DIMENSIONS.length, 36);
     assert.equal(TAG_MAPPINGS.length, 77);
     assert.equal(AGE_BAND_RULES.length, 32);
-    assert.equal(TAG_MAPPINGS.filter((m) => m.status === 'needs-confirmation').length, 5);
+    assert.equal(TAG_MAPPINGS.filter((m) => m.status === 'needs-confirmation').length, 0);
   });
 
   test('每条年龄规则都声明了源区间', () => {

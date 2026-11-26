@@ -432,3 +432,81 @@ describe('复核补强：错误路径必须明确报错', () => {
     await assert.rejects(() => normalizeJdPortrait(path, {}), /缺少必要列/);
   });
 });
+
+describe('复核补强：错误路径覆盖矩阵补全', () => {
+  test('天猫只有表头时抛错', async () => {
+    const path = await writeXlsx(join(dir, 'tmall-headeronly.xlsx'), '明细', [
+      ['标签类型', '一级标签(标签值)', '占比'],
+    ]);
+    await assert.rejects(() => normalizeTmallPortrait(path, {}), /只有表头/);
+  });
+
+  test('京东只有表头时抛错', async () => {
+    const path = await writeXlsx(join(dir, 'jd-headeronly.xlsx'), 'Sheet0', [
+      ['标签名', '枚举值', '占比', 'TGI'],
+    ]);
+    await assert.rejects(() => normalizeJdPortrait(path, {}), /只有表头/);
+  });
+
+  test('商品表只有表头时抛错', async () => {
+    const path = await writeXlsx(join(dir, 'product-headeronly.xlsx'), 'Sheet1', [
+      ['款号', '吊牌价'],
+    ]);
+    await assert.rejects(() => normalizeProductTable(path), /只有表头/);
+  });
+
+  test('渠道表只有表头时抛错', async () => {
+    const path = await writeXlsx(join(dir, 'channel-headeronly.xlsx'), 'Sheet1', [
+      ['店铺编码', '店铺'],
+    ]);
+    await assert.rejects(() => normalizeChannelTable(path), /只有表头/);
+  });
+
+  test('占比列全部无法解析时抛错，不静默返回空画像', () => {
+    const path = writeCsv(join(dir, 'badtype.csv'), [
+      ['标签类型', '标签', 'X-占比', 'X-tgi'],
+      ['预测性别', '男', '不是数字', '不是数字'],
+      ['预测性别', '女', '也不是', '也不是'],
+    ]);
+    assert.throws(() => normalizeDouyinPortrait(path, {}), /无法解析出任何数值/);
+  });
+
+  test('部分行类型不符时记 error 级问题并保留可解析的行', () => {
+    const path = writeCsv(join(dir, 'partialbad.csv'), [
+      ['标签类型', '标签', 'X-占比', 'X-tgi'],
+      ['预测性别', '男', '不是数字', '不是数字'],
+      ['预测性别', '女', '60%', '120'],
+    ]);
+    const portrait = normalizeDouyinPortrait(path, {});
+    const issue = portrait.issues?.find((i) => i.kind === 'parse-error');
+    assert.ok(issue, '应记录 parse-error 问题');
+    assert.equal(issue.severity, 'error');
+    assert.ok(
+      Math.abs((portrait.projections.gender?.labels['女']?.share ?? 0) - 0.6) < 1e-9,
+      '可解析的行应正常投影',
+    );
+  });
+
+  test('零字节 XLSX 抛 NormalizationError 而非底层库的原始错误', async () => {
+    const path = join(dir, 'zero.xlsx');
+    writeFileSync(path, '');
+    await assert.rejects(
+      () => normalizeTmallPortrait(path, {}),
+      (error: Error) => {
+        assert.equal(error.name, 'NormalizationError');
+        return true;
+      },
+    );
+  });
+
+  test('天猫消费能力在方向确认后正常投影', async () => {
+    const path = await tmallPortraitXlsx(join(dir, 'spending.xlsx'), [
+      ['预测购买力', 'L5', '10.00%'],
+      ['预测购买力', 'L1', '5.00%'],
+    ]);
+    const portrait = await normalizeTmallPortrait(path, { entityType: 'channel' });
+    const power = portrait.projections.spending_power;
+    assert.ok(Math.abs((power?.labels['极高']?.share ?? 0) - 0.1) < 1e-9);
+    assert.ok(Math.abs((power?.labels['极低']?.share ?? 0) - 0.05) < 1e-9);
+  });
+});
