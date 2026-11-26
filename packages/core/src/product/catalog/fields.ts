@@ -22,7 +22,7 @@ export const PRODUCT_FIELDS: FieldSpec[] = [
   { key: 'barcode', label: 'SKU 条形码', type: 'string', required: false, usage: ['comparison'], sources: ['SKU条形码'] },
   { key: 'supplier_barcode', label: '供应商条形码', type: 'string', required: false, usage: ['comparison'], sources: ['供应商条形码'] },
   { key: 'platform_product_id', label: '平台商品 ID', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['天猫id', '商品ID', 'ID'] },
-  { key: 'platform_link', label: '平台商品链接', type: 'string', required: false, usage: ['comparison'], sources: ['天猫链接', '链接'] },
+  { key: 'platform_link', label: '平台商品链接', type: 'string', required: false, usage: ['comparison'], sources: ['天猫链接', '链接', '集市链接', '唯品链接'] },
 
   // ── 客观商品属性 ────────────────────────────────────────────
   { key: 'brand', label: '品牌', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['商品品牌', '品牌'] },
@@ -43,7 +43,7 @@ export const PRODUCT_FIELDS: FieldSpec[] = [
   { key: 'category_l1', label: '产品链（大类）', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['产品链（大类）'] },
   { key: 'category_l2', label: '中类', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['中类'] },
   { key: 'category_l2_code', label: '中类编码', type: 'string', required: false, usage: ['prediction'], sources: ['中类编码'] },
-  { key: 'category_l3', label: '小类', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['小类'] },
+  { key: 'category_l3', label: '小类', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['小类', '品类'] },
   { key: 'product_line', label: '产品线', type: 'string', required: false, usage: ['prediction'], sources: ['产品线', '产品线编码'] },
   { key: 'goods_category', label: '货品分类', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['货品分类'] },
   { key: 'item_attr', label: '款属性', type: 'string', required: false, usage: ['prediction', 'comparison'], sources: ['款属性'] },
@@ -55,7 +55,15 @@ export const PRODUCT_FIELDS: FieldSpec[] = [
   { key: 'group_tag', label: '群组打标', type: 'string', required: false, usage: ['prediction'], sources: ['群组打标'] },
   { key: 'silhouette', label: '版型', type: 'string', required: false, usage: ['prediction'], sources: ['版型'] },
   { key: 'fabric', label: '面料', type: 'string', required: false, usage: ['prediction'], sources: ['面料'] },
-  { key: 'fab', label: 'FAB', type: 'text', required: false, usage: ['prediction'], sources: ['FAB'] },
+  {
+    key: 'fab',
+    label: 'FAB',
+    type: 'text',
+    required: false,
+    usage: ['comparison'],
+    sources: ['FAB'],
+    note: '该列是人工撰写的卖点表述（含 Benefit 层话术），按背对背隔离不入预测路径；预测如需使用，应改用独立的版型／面料／工艺列',
+  },
   { key: 'spec', label: '规格', type: 'string', required: false, usage: ['prediction'], sources: ['规格'] },
   { key: 'plane', label: '平面', type: 'string', required: false, usage: ['prediction'], sources: ['平面'] },
   { key: 'collar', label: '领型', type: 'string', required: false, usage: ['prediction'], sources: ['领型'] },
@@ -174,6 +182,14 @@ export const PRODUCT_FIELDS: FieldSpec[] = [
     required: false,
     usage: ['comparison'],
     sources: ['组别'],
+  },
+  {
+    key: 'sales_season_note',
+    label: '销售季备注',
+    type: 'text',
+    required: false,
+    usage: ['comparison'],
+    sources: ['销售季备注'],
   },
 ];
 

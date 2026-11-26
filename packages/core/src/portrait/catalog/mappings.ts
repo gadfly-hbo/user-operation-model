@@ -109,7 +109,7 @@ export const TAG_MAPPINGS: TagMapping[] = [
         : {}),
     }),
   ),
-  // 天猫 L1–L5 的方向未在数据源中得到证实，标记待确认，不参与投影
+  // 天猫 L1–L5 的方向已由用户确认（2026-11-26）：L1 最低购买力，L5 最高
   ...(['L1', 'L2', 'L3', 'L4', 'L5'] as const).map(
     (label): TagMapping => ({
       id: `spending_power.tmall.${label}`,
@@ -119,8 +119,8 @@ export const TAG_MAPPINGS: TagMapping[] = [
       targetDimension: 'spending_power',
       targetLabel: { L1: '极低', L2: '低', L3: '中', L4: '高', L5: '极高' }[label],
       confidence: 'manual',
-      status: 'needs-confirmation',
-      note: 'L 数值与购买力的方向未在数据源中证实，确认前不参与投影',
+      status: 'confirmed',
+      note: 'L 数值与购买力的方向由用户确认：L1 最低、L5 最高（2026-11-26）',
     }),
   ),
 

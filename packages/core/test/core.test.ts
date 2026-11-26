@@ -90,10 +90,35 @@ describe('跨平台标签映射', () => {
     }
   });
 
-  test('待确认的映射不参与解析', () => {
+  test('已确认的映射参与解析', () => {
     const table = new MappingTable();
-    assert.equal(table.resolve('tmall', '预测购买力', 'L3'), undefined);
-    assert.equal(table.resolveAll('tmall', '预测购买力', 'L3').length, 1);
+    // 天猫 L1–L5 方向已由用户确认（2026-11-26）：L1 最低、L5 最高
+    assert.equal(table.resolve('tmall', '预测购买力', 'L3')?.targetLabel, '中');
+    assert.equal(table.resolve('tmall', '预测购买力', 'L1')?.targetLabel, '极低');
+    assert.equal(table.resolve('tmall', '预测购买力', 'L5')?.targetLabel, '极高');
+  });
+
+  test('当前没有待确认的映射', () => {
+    const pending = TAG_MAPPINGS.filter((m) => m.status === 'needs-confirmation');
+    assert.deepEqual(pending.map((m) => m.id), []);
+  });
+
+  test('源维度未登记的映射被拒绝', () => {
+    const table = new MappingTable();
+    assert.throws(
+      () =>
+        table.add({
+          id: 'unknown.source',
+          platform: 'douyin',
+          sourceDimension: '未登记的维度',
+          sourceLabel: '甲',
+          targetDimension: 'gender',
+          targetLabel: '女',
+          confidence: 'manual',
+          status: 'confirmed',
+        }),
+      /源维度未登记/,
+    );
   });
 
   test('已确认的映射可被解析', () => {
@@ -182,10 +207,16 @@ describe('商品字段目录与背对背隔离', () => {
   });
 
   test('客观属性可用于预测', () => {
-    const objective = ['silhouette', 'fabric', 'fab', 'category_l2', 'category_l3', 'tag_price'];
+    const objective = ['silhouette', 'fabric', 'category_l2', 'category_l3', 'tag_price'];
     for (const key of objective) {
       assert.equal(catalog.isExcludedFromPrediction(key), false, `${key} 应可用于预测`);
     }
+  });
+
+  test('人工撰写的 FAB 卖点不入预测路径', () => {
+    assert.equal(catalog.isExcludedFromPrediction('fab'), true);
+    const field = catalog.get('fab');
+    assert.ok(field?.note?.includes('人工撰写'));
   });
 
   test('性别修正可用于预测但附带回算说明', () => {
@@ -211,6 +242,7 @@ describe('可扩展性', () => {
       core: false,
       platforms: ['douyin'],
       labels: ['A', 'B'],
+      projection: 'identity',
     });
     assert.equal(registry.list().length, before + 1);
     assert.equal(registry.get('custom_dimension')?.labels?.length, 2);
@@ -226,6 +258,7 @@ describe('可扩展性', () => {
           kind: 'nominal',
           core: false,
           platforms: [],
+          projection: 'identity',
         }),
       /维度已存在/,
     );
@@ -236,14 +269,14 @@ describe('可扩展性', () => {
     table.add({
       id: 'custom.map',
       platform: 'douyin',
-      sourceDimension: '自定义维度',
-      sourceLabel: '甲',
+      sourceDimension: '预测性别',
+      sourceLabel: '女',
       targetDimension: 'gender',
       targetLabel: '女',
-      confidence: 'manual',
+      confidence: 'exact',
       status: 'confirmed',
     });
-    assert.equal(table.resolve('douyin', '自定义维度', '甲')?.targetLabel, '女');
+    assert.equal(table.resolve('douyin', '预测性别', '女')?.targetLabel, '女');
   });
 
   test('可运行时追加商品字段', () => {
@@ -269,9 +302,128 @@ describe('可扩展性', () => {
 });
 
 describe('目录规模', () => {
-  test('维度、映射、年龄规则、商品字段均有实质规模', () => {
-    assert.ok(DIMENSIONS.length >= 30, `维度过少: ${DIMENSIONS.length}`);
-    assert.ok(TAG_MAPPINGS.length >= 60, `映射过少: ${TAG_MAPPINGS.length}`);
-    assert.ok(AGE_BAND_RULES.length >= 30, `年龄规则过少: ${AGE_BAND_RULES.length}`);
+  test('目录规模为精确值，不是下限', () => {
+    assert.equal(DIMENSIONS.length, 36);
+    assert.equal(TAG_MAPPINGS.length, 77);
+    assert.equal(AGE_BAND_RULES.length, 32);
+    assert.equal(TAG_MAPPINGS.filter((m) => m.status === 'needs-confirmation').length, 0);
+  });
+
+  test('每条年龄规则都声明了源区间', () => {
+    for (const rule of AGE_BAND_RULES) {
+      assert.ok(rule.sourceRange, `规则缺少 sourceRange: ${rule.platform}/${rule.sourceBand}`);
+    }
+  });
+});
+
+describe('复核补强：B1 跨体系互转必须被拒绝', () => {
+  const registry = new DimensionRegistry();
+
+  test('注入违禁互转映射时，追加即被拒绝', () => {
+    const table = new MappingTable();
+    assert.throws(
+      () =>
+        table.add({
+          id: 'violate.fabric-to-general',
+          platform: 'tmall',
+          sourceDimension: '大服饰策略人群',
+          sourceLabel: '潮流人群',
+          targetDimension: 'strategy_segment',
+          targetLabel: '都市蓝领',
+          confidence: 'manual',
+          status: 'confirmed',
+        }),
+      /跨体系互转/,
+    );
+  });
+
+  test('跨体系互转在交叉校验中同样被报出', () => {
+    const table = new MappingTable();
+    const problems = table.validateOne({
+      id: 'violate.check',
+      platform: 'tmall',
+      sourceDimension: '大服饰策略人群',
+      sourceLabel: '潮流人群',
+      targetDimension: 'strategy_segment',
+      targetLabel: '都市蓝领',
+      confidence: 'manual',
+      status: 'confirmed',
+    });
+    assert.ok(problems.some((p) => p.includes('跨体系互转')));
+  });
+
+  test('服饰体系不得映射到无族维度', () => {
+    const table = new MappingTable();
+    assert.throws(
+      () =>
+        table.add({
+          id: 'violate.fabric-to-city',
+          platform: 'tmall',
+          sourceDimension: '大服饰策略人群',
+          sourceLabel: '潮流人群',
+          targetDimension: 'city_tier',
+          targetLabel: '一线',
+          confidence: 'manual',
+          status: 'confirmed',
+        }),
+      /跨体系互转/,
+    );
+  });
+
+  test('合法映射不报跨体系问题', () => {
+    const table = new MappingTable();
+    assert.deepEqual(table.validate(registry), []);
+  });
+
+  test('两个体系族已声明且互不相同', () => {
+    assert.equal(registry.get('strategy_segment')?.family, 'general');
+    assert.equal(registry.get('apparel_segment')?.family, 'apparel');
+  });
+});
+
+describe('复核补强：目录一致性与负向行为', () => {
+  const registry = new DimensionRegistry();
+
+  test('年龄统一词表在两处定义完全一致', () => {
+    assert.deepEqual(registry.get('age')?.labels, UNIFIED_AGE_BANDS);
+  });
+
+  test('未声明的源组合不推断映射', () => {
+    const table = new MappingTable();
+    assert.equal(table.resolve('douyin', '八大消费群体', '不存在的标签'), undefined);
+    assert.equal(table.resolve('douyin', '不存在的维度', '都市银发'), undefined);
+    assert.equal(table.resolve('xhs', '预测性别', '女'), undefined);
+  });
+
+  test('三个平台的年龄源档位全覆盖且数量与真实导出一致', () => {
+    const bands = new BandResolver();
+    const counts = new Map<string, number>();
+    for (const rule of bands.list()) {
+      counts.set(rule.platform, (counts.get(rule.platform) ?? 0) + 1);
+    }
+    assert.equal(counts.get('douyin'), 10, '抖音应为 10 档');
+    assert.equal(counts.get('tmall'), 9, '天猫应为 9 档');
+    assert.equal(counts.get('jd'), 13, '京东应为 13 档');
+    assert.equal(bands.list().length, 32);
+  });
+
+  test('50 岁跨平台冲突的三个源档位全部标记为 partial', () => {
+    const bands = new BandResolver();
+    for (const [platform, band] of [
+      ['douyin', '46-50'],
+      ['tmall', '[50,54]'],
+      ['jd', '46~50岁'],
+    ] as const) {
+      const rule = bands.resolve(platform, band);
+      assert.equal(rule?.precision, 'partial', `${platform}/${band} 应标 partial`);
+      assert.ok(rule?.note?.includes('50'), `${platform}/${band} 的 note 应说明 50 岁冲突`);
+    }
+  });
+
+  test('下界缺失的规则不设置无交集的 spill', () => {
+    const bands = new BandResolver();
+    const rule = bands.resolve('jd', '16~20岁');
+    assert.equal(rule?.precision, 'partial');
+    assert.equal(rule?.spill, undefined, '16-17 岁无落点，不应设置 spill');
   });
 });
