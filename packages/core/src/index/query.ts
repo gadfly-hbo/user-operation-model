@@ -91,6 +91,8 @@ export function availableMonths(
     )
     .map((portrait) => portrait.month)
     .filter(Boolean)
+    // 同一月份可能命中多个平台，去重后再列出
+    .filter((month, position, all) => all.indexOf(month) === position)
     .sort();
 }
 
@@ -213,20 +215,25 @@ export interface SimilarHit {
   hasPortrait: boolean;
 }
 
-/** 属性 Jaccard 相似度。 */
+/**
+ * 属性相似度：各属性键上的 Jaccard 系数的算术平均。
+ *
+ * 单键的 Jaccard = |交集| / |并集|；双方都缺失的属性键**跳过**（不计入分母）。
+ */
 export function attributeJaccard(a: ProductDossier, b: ProductDossier): number {
   const keys = ['category_l1', 'category_l2', 'category_l3', 'silhouette', 'fabric', 'ip'];
-  let shared = 0;
-  let total = 0;
+  const scores: number[] = [];
   for (const key of keys) {
     const left = new Set(a.attributes?.[key] ?? []);
     const right = new Set(b.attributes?.[key] ?? []);
     if (left.size === 0 && right.size === 0) continue;
-    total += 1;
-    for (const value of left) if (right.has(value)) shared += 1;
+    const union = new Set([...left, ...right]);
+    let intersection = 0;
+    for (const value of left) if (right.has(value)) intersection += 1;
+    scores.push(intersection / union.size);
   }
-  if (total === 0) return 0;
-  return shared / total;
+  if (scores.length === 0) return 0;
+  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
 }
 
 /**

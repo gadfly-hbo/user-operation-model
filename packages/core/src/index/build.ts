@@ -41,7 +41,7 @@ export const DATA_SOURCE_PROBES: DataSourceProbe[] = [
     probe: (dataRoot) => {
       const dir = join(dataRoot, 'domains', '01_品牌信息');
       const found = existsSync(dir)
-        ? listFiles(dir).some((file) => /画像/.test(file))
+        ? listFiles(dir).some((file) => detectEntityType(file) === 'brand')
         : false;
       return found
         ? undefined
@@ -151,16 +151,30 @@ function listFiles(dir: string): string[] {
 /** 判断画像文件属于哪个平台。 */
 function detectPlatform(path: string): 'douyin' | 'tmall' | 'jd' | undefined {
   const normalized = path.split(sep).join('/');
-  if (/\/douyin\//.test(normalized) || normalized.endsWith('_抖音.csv')) return 'douyin';
-  if (/\/tmall\//.test(normalized) || normalized.endsWith('_天猫.xlsx')) return 'tmall';
-  if (/\/jd\//.test(normalized) || normalized.endsWith('_京东.xlsx')) return 'jd';
+  // 文件名后缀优先于所在目录：同一目录下可混放多平台文件
+  if (normalized.endsWith('_抖音.csv') || normalized.endsWith('_抖音.xlsx')) return 'douyin';
+  if (normalized.endsWith('_天猫.csv') || normalized.endsWith('_天猫.xlsx')) return 'tmall';
+  if (normalized.endsWith('_京东.csv') || normalized.endsWith('_京东.xlsx')) return 'jd';
+  if (/\/douyin\//.test(normalized)) return 'douyin';
+  if (/\/tmall\//.test(normalized)) return 'tmall';
+  if (/\/jd\//.test(normalized)) return 'jd';
   return undefined;
 }
 
-/** 画像实体的类型：带款号的文件是商品，其余是渠道／门店。 */
-function detectEntityType(path: string): 'product' | 'channel' {
+/**
+ * 画像实体的类型。
+ *
+ * - 带「款号」的是商品
+ * - 带「品牌」且带「画像」的是品牌
+ * - 其余是渠道／门店
+ *
+ * 探测表的品牌判定与此保持一致，避免「探测说就绪但索引里没有 brand 实体」。
+ */
+export function detectEntityType(path: string): 'product' | 'channel' | 'brand' {
   const name = path.split(sep).pop() ?? '';
-  return /款号/.test(name) ? 'product' : 'channel';
+  if (/款号/.test(name)) return 'product';
+  if (/品牌/.test(name) && /画像/.test(name)) return 'brand';
+  return 'channel';
 }
 
 /**

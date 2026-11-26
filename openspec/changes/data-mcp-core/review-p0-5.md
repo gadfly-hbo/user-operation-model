@@ -1,7 +1,7 @@
 # P0-5 独立复核记录
 
 > 复核对象：P0-5「数据 MCP server」候选 · 复核人：独立复核 Agent（未参与候选任何部分）
-> 相关：[spec.md](spec.md) · [result.md](result.md) · [工程规范 §5](../../../../docs/engineering-workflow.md)
+> 相关：[spec.md](spec.md) · [result.md](result.md) · [工程规范 §5](../../../docs/engineering-workflow.md)
 
 ---
 

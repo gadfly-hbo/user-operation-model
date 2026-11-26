@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import {
   aggregatePortrait,
+  attributeJaccard,
+  availableMonths,
   buildIndex,
   channelEntityIds,
   cosineSimilarity,
   findPortraitByEntityIds,
+  findProduct,
   jensenShannonDistance,
   listChannels,
   searchByTag,
@@ -81,10 +84,17 @@ describe('索引构建', () => {
 
   test('商品表之间同款号重复时记冲突，不静默合并', async () => {
     const root = await createFixtureIndexRoot();
-    const { writeFileSync } = await import('node:fs');
-    writeFileSync(join(root, 'domains', '04_商品信息', '商品附加信息表.csv'), 'x');
     const index = await buildIndex({ dataRoot: root });
-    assert.ok(index.issues.length > 0);
+    // 断言具体的冲突条目，而不是「有问题就行」
+    const conflict = index.issues.find(
+      (issue) => issue.kind === 'conflict' && issue.sourceLabel === 'SPU-001',
+    );
+    assert.ok(conflict, `应记录 SPU-001 的跨表冲突，实际问题：${JSON.stringify(index.issues)}`);
+    assert.ok(conflict.message.includes('未做隐式合并'));
+    // 重复款号只保留一条
+    assert.equal(index.products.filter((p) => p.spu === 'SPU-001').length, 1);
+    // 非重复款号都保留
+    assert.ok(index.products.some((p) => p.spu === 'SPU-005'));
   });
 });
 
@@ -114,12 +124,49 @@ describe('渠道查询', () => {
     assert.ok(ids.includes('演示账号1'));
   });
 
+  test('同月多平台命中时按平台名确定性选择', async () => {
+    const root = await createFixtureIndexRoot();
+    const index = await buildIndex({ dataRoot: root });
+    const candidates = channelEntityIds(index, 'D00001');
+    const matched = index.portraits.filter(
+      (portrait) =>
+        portrait.entityType === 'channel' &&
+        candidates.includes(portrait.entityId) &&
+        portrait.month === '2025-07~2026-06',
+    );
+    assert.ok(matched.length >= 2, 'fixture 应包含同月多平台的两份画像');
+
+    const portrait = findPortraitByEntityIds(index, {
+      entityType: 'channel',
+      entityIds: candidates,
+      month: '2025-07~2026-06',
+    });
+    assert.ok(portrait);
+    // 抖音 < 天猫（字母序），两次调用结果必须一致
+    assert.deepEqual(Object.keys(portrait.platformLabels), ['douyin']);
+    const again = findPortraitByEntityIds(index, {
+      entityType: 'channel',
+      entityIds: candidates,
+      month: '2025-07~2026-06',
+    });
+    assert.deepEqual(Object.keys(again!.platformLabels), ['douyin']);
+  });
+
+  test('availableMonths 对同月多平台去重', async () => {
+    const root = await createFixtureIndexRoot();
+    const index = await buildIndex({ dataRoot: root });
+    const months = availableMonths(index, 'channel', ['D00001', '演示账号1']);
+    assert.deepEqual(months, ['2025-07~2026-06']);
+  });
+
   test('画像能通过店铺名关联到渠道', async () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
+    // 同月多平台时必须明确月份，否则无法唯一确定
     const portrait = findPortraitByEntityIds(index, {
       entityType: 'channel',
       entityIds: channelEntityIds(index, 'D00001'),
+      month: '2025-07~2026-06',
     });
     assert.ok(portrait);
     assert.equal(portrait.entityId, '演示账号1');
@@ -168,12 +215,27 @@ describe('相似款', () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
     const hits = similarProducts(index, { spu: 'SPU-001' });
-    assert.ok(hits.length >= 1);
-    for (const hit of hits) {
-      if (!hit.hasPortrait) {
-        assert.equal(hit.score, hit.attributeScore, '无画像时总分应等于属性分');
-      }
+    const withoutPortrait = hits.filter((hit) => !hit.hasPortrait);
+    assert.ok(withoutPortrait.length > 0, 'fixture 应包含无画像的候选商品');
+
+    // 断言不放在条件分支内：每个无画像候选的得分都必须等于属性分，
+    // 若实现错误地把缺失画像分按 0 计入，得分会小于属性分
+    for (const hit of withoutPortrait) {
+      assert.equal(
+        hit.score,
+        hit.attributeScore,
+        '无画像时总分必须等于属性分（画像分不按 0 计入）',
+      );
     }
+
+    // 取一个属性确实相似的无画像候选（SPU-004 与 SPU-001 同品类同小类），
+    // 断言其属性分大于 0 —— 否则上面的相等断言在两种实现下都成立，等于空转
+    const similar = withoutPortrait.find((hit) => hit.spu === 'SPU-004');
+    assert.ok(similar, 'fixture 应包含与目标同品类的无画像候选 SPU-004');
+    assert.ok(
+      similar.attributeScore > 0,
+      `SPU-004 的属性分应大于 0，实际 ${similar.attributeScore}`,
+    );
   });
 
   test('属性完全相同的商品属性相似度为 1', async () => {
@@ -183,6 +245,24 @@ describe('相似款', () => {
     const same = hits.find((hit) => hit.spu === 'SPU-002');
     assert.ok(same);
     assert.ok(Math.abs(same.attributeScore - 1) < 1e-9, '同品类同小类的属性分应为 1');
+  });
+
+  test('属性部分重叠时相似度落在正确区间', async () => {
+    const root = await createFixtureIndexRoot();
+    const index = await buildIndex({ dataRoot: root });
+    const a = findProduct(index, 'SPU-001')!;
+    const b = findProduct(index, 'SPU-006')!;
+    // SPU-001：l2={短袖T恤} l3={T恤}
+    // SPU-006：l2={短袖T恤} l3={长袖T恤}
+    // l2 完全相同（1.0），l3 无交集（0.0），平均 0.5
+    //
+    // 注：当前商品属性字段均为**单值**，此时「并集分母」与「共享 key 数」两种
+    // 口径在数学上等价（都得到 0.5）。实现采用并集分母（口径更正确，
+    // 多值数据下才有区别），因此这里只断言结果值，不断言口径。
+    assert.ok(
+      Math.abs(attributeJaccard(a, b) - 0.5) < 1e-9,
+      `属性相似度应为 0.5，实际 ${attributeJaccard(a, b)}`,
+    );
   });
 
   test('不包含自身', async () => {
