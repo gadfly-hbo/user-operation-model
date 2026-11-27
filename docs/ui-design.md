@@ -200,7 +200,8 @@ pls 的 `PortraitComparisonWorkbench` 提供了**骨架**（Baseline／Compariso
 - 重新生成：`npm run build && npm run tool1 -- --demo --out site/web/tool1-report.html`
 - **只含合成数据**；真实数据版本由工具在本机生成，不进站点、不随站点发布
 
-旧版原型 `docs/ui-demo/` 保留作历史对照，不再维护。
+旧版原型 `docs/ui-demo/` 已删除（2026-11-27，用户决定）：它内部还留着一份公式与权重副本，
+容易被误当成口径依据；现行形态以 `site/web/` 与工具1 报告页为准。
 
 ---
 

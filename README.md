@@ -31,7 +31,6 @@
 ├── docs/
 │   ├── 产品讨论稿-v0.1.md        # 产品方向、范围、架构决策
 │   ├── ui-design.md              # 工作台 UI 设计说明
-│   ├── ui-demo/                  # 旧版 UI 原型（历史对照）
 │   └── engineering-workflow.md  # 工程规范（流程唯一详细来源）
 ├── site/
 │   └── web/                     # 工作台 UI 站点（可发布，静态无构建）
@@ -107,7 +106,7 @@ python3 -m http.server 8899 --directory site/web
 
 设计说明见 [docs/ui-design.md](docs/ui-design.md)。视觉论点是「一张摊开的对账单」：人工画像（朱砂）与算法画像（靛蓝）各占一个色相，中间用差异谱把分歧显性化，右侧落决策。原型含**合成演示数据**，不含真实业务数据。
 
-旧版原型保留在 `docs/ui-demo/` 仅作历史对照，不再维护。
+旧版原型 `docs/ui-demo/` 已删除（2026-11-27），现行形态以 `site/web/` 与工具1 报告页为准。
 
 ## 本地检查
 
