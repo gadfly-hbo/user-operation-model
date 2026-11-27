@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>人群运营工作台 · 人-货-渠联动</title>
+<meta name="description" content="服饰零售人-货-渠人群运营工作台原型：选品评审、货渠匹配、新品预测、留存与回购。界面数据均为合成演示数据。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a1a2e'/%3E%3Cpath d='M6 22 L14 10 L18 16 L22 12 L26 22 Z' fill='%23d97757'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./assets/base.css" />
+</head>
+<body>
+<div class="shell">
+  <header class="head">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true"></span>
+      <span class="brand__name">人群运营工作台</span>
+    </div>
+    <span class="head__sep" aria-hidden="true"></span>
+    <span class="head__context">人-货-渠联动 · 2026 秋冬</span>
+    <div class="head__spacer"></div>
+    <span class="lamp" id="lamp" data-state="partial" title="8 个工具的数据源尚未接入">
+      <span class="lamp__dot" aria-hidden="true"></span>
+      <span id="lampText">数据就绪 8 / 17</span>
+    </span>
+    <button class="icon-btn" id="themeBtn" type="button" aria-label="切换明暗主题">暗色</button>
+  </header>
+
+  <div class="body">
+    <nav class="rail" id="rail" aria-label="主导航"></nav>
+    <main class="work" id="work"></main>
+  </div>
+</div>
+
+<div class="drawer-backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer__head">
+    <span class="drawer__title" id="drawerTitle">详情</span>
+    <button class="icon-btn" id="drawerClose" type="button" aria-label="关闭抽屉">关闭</button>
+  </div>
+  <div class="drawer__body" id="drawerBody"></div>
+  <div class="drawer__foot" id="drawerFoot"></div>
+</aside>
+
+<script src="./assets/demo-data.js"></script>
+<script src="./assets/app.js"></script>
+</body>
+</html>

@@ -31,8 +31,10 @@
 ├── docs/
 │   ├── 产品讨论稿-v0.1.md        # 产品方向、范围、架构决策
 │   ├── ui-design.md              # 工作台 UI 设计说明
-│   ├── ui-demo/                 # 可点击 UI 原型（静态单页）
+│   ├── ui-demo/                  # 旧版 UI 原型（历史对照）
 │   └── engineering-workflow.md  # 工程规范（流程唯一详细来源）
+├── site/
+│   └── web/                     # 工作台 UI 站点（可发布，静态无构建）
 ├── openspec/
 │   ├── README.md                # 变更记录机制
 │   └── changes/<change-id>/     # 每项变更的 spec.md 与 result.md
@@ -94,16 +96,18 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 
 stdio 传输、零网络请求、只读本地数据。17 个工具，其中 **9 个**已接入真实数据、**8 个**的数据源待补（返回明确错误并指明缺哪个文件；文件到位后自动可用，不用改代码）。详见 [docs/mcp-usage.md](docs/mcp-usage.md)。
 
-## UI Demo
+## UI 工作台
 
-工作台形态的可点击原型（9 个页面，静态单页，无构建无依赖）：
+工作台形态的可点击原型（9 个页面，静态站点，无构建无依赖、无外部请求）：
 
 ```bash
-python3 -m http.server 8899 --directory docs/ui-demo
-# http://127.0.0.1:8899/index.html
+python3 -m http.server 8899 --directory site/web
+# http://127.0.0.1:8899/
 ```
 
-设计说明见 [docs/ui-design.md](docs/ui-design.md)。原型含**合成演示数据**，不含真实业务数据。
+设计说明见 [docs/ui-design.md](docs/ui-design.md)。视觉论点是「一张摊开的对账单」：人工画像（朱砂）与算法画像（靛蓝）各占一个色相，中间用差异谱把分歧显性化，右侧落决策。原型含**合成演示数据**，不含真实业务数据。
+
+旧版原型保留在 `docs/ui-demo/` 仅作历史对照，不再维护。
 
 ## 本地检查
 
