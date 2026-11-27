@@ -218,3 +218,25 @@ G4 59.2 C → 68.9 B PASS｜G5（锚点）40.9 C → 42 C PASS｜黄金回归通
 复核应修项修正单（本单）只动了记录与文档：`openspec/changes/p0-data-completion/result.md`、`openspec/changes/p0-data-completion/review-stage1.md`、`docs/data-request.md`、`docs/mcp-usage.md`；**解析器／索引／MCP 代码零改动**（`npm test` 292/292 不变）。
 
 `data/` 下未新增任何文件；业务数据不入库（`check-data-guard.py` 通过）。
+
+---
+
+## 9. 专项最终检查（工程规范 §5.3）
+
+**检查范围**：本变更（P0 数据收尾阶段一）及其受影响接缝——`packages/core/src/normalize/**`、`packages/core/src/index/**`、`packages/data-mcp/src/server.ts`、两包测试与相关文档。不据此宣称未检查的既有实现已合规。
+**候选身份**：分支 `work/p0-data-completion`，基线 `main` @ `fc01783`（PR #4 已合并），相对 main 差异 28 个文件；`git merge-base main HEAD` = `fc01783`。
+**检查者**：主 agent（规格起草与验收角色，**未参与本候选任何代码实现**；实现由 `SDD·TDD 实现者` 完成，独立复核由 `SDD·TDD 独立复核者` 完成，见 [review-stage1.md](review-stage1.md)）。
+
+| 检查项 | 实际核对与证据位置 | 结论 |
+| --- | --- | --- |
+| 四点原则 | **Host 管环境**：只做数据契约与查询实现，`data/` 只读消费、MCP 走 stdio，不代业务判断（缺失不插补、不猜口径、冲突不隐式合并——`packages/core/src/normalize/table.ts`、`index/build.ts` 的 `applyPortraitConflicts`）。**Agent 自主执行**：未新增审批点；DC03 一致性守卫测试锁死「探测说就绪 ⇒ 处理器非桩」。**复用第三方**：`git diff main...HEAD -- package.json package-lock.json packages/*/package.json` 为空 → 零新增依赖，CSV 走既有解析器、XLSX 走既有 exceljs。**减少人的操作**：5 类新表全部可选，不填时索引与查询行为与 main 逐字一致（`packages/core/test/p0-invariance.test.ts` 8 例） | **通过** |
+| 数据不出网（§7） | `npm run offline-check` **PASS**（守卫自检 13 个出网入口全部拦截并归因；17 工具 9 就绪／8 `data-not-ready`／0 意外；**出网尝试 0**，见 §5-1）；零新增依赖即无新出网路径；`data/` 未新增文件、`check-data-guard.py` PASS；CI（`.github/workflows/check.yml`）只跑合成夹具与守卫脚本，不接触 `data/`；本变更唯一入库的 `data/README.md` 新增内容经逐行核对只有模板说明与合成占位标识（`D00001 演示账号1`／`SPU-001`），无真实店铺／商品／人群数据 | **通过** |
+| 匹配内核唯一性（§9.1） | `git diff --name-only main...HEAD | grep core/src/match/` 为空 → 未新增第二份评分逻辑；权重／阈值仍单一来源 `packages/core/src/match/config.ts`（本变更未改）；`npm run test:golden` G1–G5 **PASS**，锚点评级不变（§5-1） | **通过** |
+| 背对背隔离（§9.2） | 本变更**不含预测路径**：`packages/core/src/model/**`、`packages/tool2-portrait-predict/**` 均未触及（属 P2 变更）。新增解析器读入的人工画像字段沿用既有画像行为，**未向任何预测入口暴露**；预测侧隔离由 P2 变更的三层守卫负责 | **通过（限本变更范围）** |
+| 模型来源与版本（§8） | 不适用：差异文件清单中无模型移植、模型包、MLflow 交互相关项 | **NOT_APPLICABLE** |
+| 人的操作 | 无新增必做维护动作、无普通读取审批；新增表缺失即 `data-not-ready` 并指名缺哪个文件（DC01／DC02 PASS）；唯一新增人工动作是业务侧供数，目的与必要性写明在 `docs/data-request.md`（每项含「解锁什么／最小量」），且数据不在本机、无替代获取路径 | **通过** |
+
+**发现的问题**：无阻断项。两项如实保留——① DC07-c（工具1 渠道级销售额接入）**NOT_RUN**，致 DC07 整项 **NOT_PROVED**（§2、§6），需另立变更；② 阶段二 DC12–DC16 **NOT_RUN**（真实数据未到位）。
+
+**结论**：**通过（限阶段一范围）**。本节不代替阶段门禁、CI 与产品验收；因存在 DC07 整项 NOT_PROVED 与阶段二 NOT_RUN，**不宣称本变更整体交付完成**。
+
