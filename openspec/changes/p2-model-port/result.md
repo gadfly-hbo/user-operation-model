@@ -1,7 +1,7 @@
 # P2-Model-Port 结果记录
 
 > 规格：[spec.md](spec.md)（状态：已确认，2026-11-27；D-P2-1 = 方案 A）
-> 累计实际范围：**P2-2（固化与溯源）**、**P2-3（模型公共库）**、**P2-4（v0.4 管线移植 + 忠实门）**、**P2-5（§9.2 合规特征集 + 合规基线）**。P2-6 起未开工。
+> 累计实际范围：**P2-2（固化与溯源）**、**P2-3（模型公共库）**、**P2-4（v0.4 管线移植 + 忠实门）**、**P2-5（§9.2 合规特征集 + 合规基线）**、**P2-6（v0.6 六阶段移植）**、**P2-7（模型导出器 + 黄金测试）**。P2-8 起未开工。
 > 执行分支：`work/p2-model-port`（独立工作树 `/tmp/uom-wt-p2`）。
 > 原始日志：本工作树 `.local/p2/`（该目录被 `.gitignore` 的 `*.local` 规则忽略，不入库）。
 
@@ -13,11 +13,11 @@
 | P2-3 | 模型公共库（ridge / metrics / vocab） | **PASS** | M02 / M03 | 见 §3 |
 | P2-4 | v0.4 管线移植 + 忠实门 | **PASS** | M05 | 见 §4 |
 | P2-5 | §9.2 合规特征集 + 合规基线 | **PASS** | M06 / M07 | 见 §5 |
-| P2-6 | v0.6 六阶段移植 | **NOT_RUN** | M08 | 本轮未开工 |
-| P2-7 | 导出器 + 黄金测试 | **NOT_RUN** | M09 | 本轮未开工 |
-| P2-8 | model-mlflow 登记（Staging） | **NOT_RUN** | M10 | 本轮未开工 |
-| P2-9 | 文档与 result | 部分完成（本文件 + 溯源文档 + 基线文档） | — | 其余随 P2-7/P2-8 |
-| P2-10 | 全量检查 | 部分完成（见 §7） | M11 / M13 | 离线检查、黄金用例因环境缺数据未跑 |
+| P2-6 | v0.6 六阶段移植 | **PASS**（管线）／门槛未达标（如实记录） | M08 | 见 §10 |
+| P2-7 | 导出器 + 黄金测试 | **PASS** | M09 | 见 §11 |
+| P2-8 | model-mlflow 登记（Staging） | **NOT_RUN** | M10 | 本轮未开工（登记需另获授权） |
+| P2-9 | 文档与 result | 部分完成（本文件 + 溯源文档 + 基线文档） | — | 其余随 P2-8 |
+| P2-10 | 全量检查 | 见 §7（本轮全量检查已跑；断网自检 NOT_RUN） | M11 / M13 | 见 §7 |
 | P2-11 | 独立复核 | **NOT_RUN** | — | 须由 `SDD·TDD 独立复核者` 执行，本轮作者不自评 |
 | P2-12 | PR / CI / squash 合并 | **NOT_RUN** | — | 本轮不 push、不开 PR |
 | P2-13 | 用户数据到位后生产重训 | **NOT_RUN** | M07 | 等 P0 数据 |
@@ -256,9 +256,12 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 
 ## 6. 未做项与本轮边界
 
-- **P2-6 起全部未开工**（v0.6 六阶段、导出器、model-mlflow 登记、黄金用例、文档收尾、独立复核、PR）。
+- **P2-8 起全部未开工**（model-mlflow 登记、文档收尾、独立复核、PR、用户数据上的生产重训与晋级）。
 - **P2-4／P2-5 范围内未做**：P2-7 的 Node 模型包导出器与固定输入黄金用例（属 P2-7）、model-mlflow 登记（属 P2-8）、
-  生产数据重训与晋级（属 P2-13）。
+  生产数据重训与晋级（属 P2-13）。其中 **P2-7 已于本轮交付**（见 §11）。
+- **P2-6／P2-7 范围内未做**：归档 v0.6 工件（`v06-artifacts`）与 26Q4 预测结果位的**继承**——
+  按 spec §7 第 4／5 条不继承，本轮只固化参考、不引用其结论；
+  v0.6 的 HTML 评估报告未移植（不在 P2 验收条目内）；folds 分层未重做（按 M08 冻结输入消费）。
 - 未改 `packages/core/src/index.ts`：`packages/core/src/index/**` 不在 spec §6 允许修改路径内，故 `model/*` 仍未从包根再导出；
   新包通过 `@uom/core/model/*` 子路径导入（见 §8 第 8 条）。
 - 未新增依赖、未引入 xlsx、未触碰 `packages/core/src/match/**`、`packages/tool1-channel-match/**`、`packages/data-mcp/**`、`site/web/**`。
@@ -281,6 +284,25 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 | 独立复核 | — | **NOT_RUN**（须由未参与本候选的 `SDD·TDD 独立复核者` 执行；作者不自评） |
 | 真实数据路径验证 | — | **NOT_RUN**（工程规范 §4.4：真实商品属性 → 预测画像 → 匹配全链路属 P2-13；本轮跑的是**归档固化数据**上的模型链路，非用户真实数据） |
 | 归档只读性 | `git -C /Users/huangbo/Dev/Archive/ModelEvol status --short` | **PASS**（归档工作树无源码/数据改动，仅原有 `.DS_Store` 噪声；本轮全程只读） |
+
+### 7.1 P2-6 / P2-7 一轮（本轮追加）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 构建 | `npm run build` | **PASS**（退出码 0；新增 12 个 TS 文件全部过 `strict` + `noUncheckedIndexedAccess`） |
+| 单测（全量） | `npm test` | **PASS**（退出码 0；`tests 317 / pass 317 / fail 0`；本轮新增 **43** 条：core/portrait-md 5 + tool2/v06 管线 26 + 导出器 12） |
+| v0.6 六阶段实跑 | `npm run pipeline:v06` | **PASS**（退出码 0；阶段 01–06 全部跑通，阶段 06 的 **12 条 fail-closed 校验全部 pass**；门槛 1/2/4 的**模型质量**结论为 FAIL，如实记录） |
+| 忠实门（回归） | `UOM_ARCHIVE_FIXED_ROOT=<主仓>/data/archive-modelevol/v04-holdout npm run test:fidelity-v04` | **PASS**（退出码 0；本轮未触碰 v0.4 管线，三数字容差 0 仍全过） |
+| 溯源校验（回归） | `node scripts/verify-modelevol-provenance.mjs` | **PASS**（退出码 0；5 包一致） |
+| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS**（99 条相对链接，错误 0，告警 0） |
+| 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | **PASS**（索引中无业务数据目录、数据文件或超大文件；`models/` 已加入 `.gitignore`） |
+| 依赖审计 | `npm audit --audit-level=high` | **PASS**（found 0 vulnerabilities；**未新增任何依赖**，未引入 xlsx） |
+| 断网自检 | `npm run offline-check` | **NOT_RUN**（守卫自检段通过：13 个出网入口全部被拦截并归因；后续 `offline-e2e` 段因工作树 `data/` 无 `domains`/`source` 子目录，MCP server 启动失败而中断——与前两轮同因，按发单要求记 NOT_RUN，不记 PASS） |
+| 工具1 黄金用例 | `npm run test:golden` | **NOT_RUN**（缺 `UOM_REFERENCE_ROOT`；本轮未触及 `packages/core/src/match/**` 评分逻辑） |
+| CI | — | **NOT_RUN**（本轮不 push、不开 PR） |
+| 独立复核 | — | **NOT_RUN**（须由未参与本候选的 `SDD·TDD 独立复核者` 执行；作者不自评） |
+| 真实数据路径验证 | — | **NOT_RUN**（工程规范 §4.4：真实商品属性 → 预测画像 → 匹配全链路属 P2-13；本轮跑的是**归档固化数据**） |
+| 归档只读性 | `git -C /Users/huangbo/Dev/Archive/ModelEvol status --short` | **PASS**（归档工作树无源码/数据改动；本轮全程只读） |
 
 ## 8. 与 spec 的偏差 / 需要决定的事项
 
@@ -307,13 +329,38 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
     （归档留出集缺白名单字段 + FAB 文本特征高维易过拟合）。生产门仍以合规基线为门槛，**不放宽**。
 12. **合规模型的留出集输入被降级**：归档 24 款留出商品的品类／季节／上新类型／IP／工艺字段全为空，
     合规模型在这些字段上只能取默认值。该基线**不能外推**到字段齐全的数据（须随 P2-13 重算）。
+13. **★ 画像 Markdown 解析器的落位与 spec §6 不同（需裁定）**：spec §6 把「v0.7 同名求和解析器」登记在
+    `packages/core/src/normalize/portrait-md.ts`，本轮实际落在 **`packages/core/src/model/portrait-md.ts`**。
+    原因：`packages/core/package.json` 的 `exports` 目前只开放 `"."` 与 `"./model/*"`（2026-11-27 用户授权范围），
+    `packages/core/src/index.ts` 又不在 spec §6 允许修改路径内，工具2 无法 `import '@uom/core/normalize/portrait-md'`；
+    落在 `model/` 下即可用**已获授权**的 `./model/*` 子路径引用，无需新增授权。
+    **需裁定**：是否追认该落位；或授权把 `"./normalize/*"` 加入 core 的 exports 并把文件移回 `normalize/`（本项目建议后者，归位更符合 spec 意图）。
+14. **★ 新增转发口 `packages/core/src/model/xlsx-rows.ts`**：只 `export { findHeaderRow, readXlsxRows } from '../normalize/xlsx.js'`，
+    **不含任何实现**，目的是让工具2 引用到 core 的**同一份** XLSX 读取实现（M04「解析零新增」要求）而不必新增 exports 授权。
+    若按第 13 条裁定把 `./normalize/*` 加入 exports，该转发口即可删除。
+15. **★ 归档 folds 的分层键含人工字段**：冻结 `folds.json` 的 `stratify_key` 是 `categoryGroup x genderCorrected`，
+    其中「性别修正」属人工字段。本移植**按 M08 要求把 folds 当作冻结输入消费**（只读 + 校验，不重生成），
+    该字段**不进入预测路径**（特征抽取只读 §9.2 白名单）。但若将来要重做分层（例如改用纯客观字段分层），
+    全部 OOF 数字都会变，须另立变更。**需裁定**：是否接受「冻结分层含人工字段」这一事实。
+16. **★ v0.6 在 §9.2 合规特征集下未达归档验收门槛（FAIL，如实记录）**：门槛 1／2／4 为 FAIL（人生阶段 JS 提升 −0.0018、p=0.8358），
+    门槛 3 PASS，门槛 5（fail-closed）PASS。管线机制本身全部达标（见 §10.3），**但模型质量未达标**。
+    按 P2 规格 §7 第 4 条，v0.6 的验收结论本就**不继承**，故这不是「回归」，而是本移植自测的真实结论。
+    **需裁定**：生产策略——是否接受「合规特征集下收益主要落在购买力／策略人群／城市等级三个维度」，
+    或在 P2-13 用用户真实数据重估（归档 25Q4 单账号小样本结论不可外推）。
+17. **`models/` 加入 `.gitignore`**：spec §6 把 `models/**` 定义为「gitignore：登记副本」，但仓库 `.gitignore` 原本**没有**该规则。
+    本轮按 §7「模型工件一律不入库」补上 `models/`（模型包与管线产物均落在该区，不入 git）。
+18. **新增 `scripts/v06-pipeline.mjs` 与根 `package.json` 的 `pipeline:v06`**：`scripts/**` 未在 spec §6 明列，
+    本轮沿用 P2-4 的 `scripts/fidelity-v04.mjs` 先例（同一变更内新增的门禁脚本）。**需追认该路径扩展**。
+19. **v0.6 归档数字未逐值复现（NOT_PROVED）**：归档的 `oof_macro_js_lift 0.006`、`candidate_not_locked`
+    与勘误前 JS 手工数值均在 spec §7 第 4／5 条的**不继承清单**内，且归档使用的是**含人工字段**的特征集。
+    本移植不设「复现归档数字」的断言，也**未**为对齐而放宽或造假；本轮产出的是**合规特征集下自测数字**（§10.4）。
 
 ## 9. 交付清单
 
 新增（tracked）：
 
 - `docs/modelevol-provenance.md`（P2-2 创建；本轮扩展 v0.4 两包登记）
-- `docs/match-model-baseline.md`（本轮新建：两组基线、口径、差异解释、限制）
+- `docs/match-model-baseline.md`（本轮新建：两组基线、口径、差异解释、限制；**本轮增补 §7 v0.6 协议基线**）
 - `scripts/verify-modelevol-provenance.mjs`（P2-2 创建；本轮扩展为 5 包）
 - `scripts/fidelity-v04.mjs`（本轮新建：移植忠实门 + 合规基线两组断言）
 - `packages/core/src/model/ridge.ts`（P2-3 创建；本轮增补 `solveCholeskyFactorized`）
@@ -330,6 +377,28 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 - `packages/core/package.json`（本轮增补 `exports["./model/*"]`，见 §8 第 8 条）
 - `openspec/changes/p2-model-port/result.md`（本文件）
 
+P2-6／P2-7 一轮新增（tracked）：
+
+- `packages/core/src/model/portrait-md.ts`（同名标签求和解析器；见 §8 第 13 条）
+- `packages/core/src/model/xlsx-rows.ts`（XLSX 读取助手的转发口；见 §8 第 14 条）
+- `packages/core/test/portrait-md.test.ts`（5 条）
+- `packages/tool2-portrait-predict/src/pipeline/v06/lib/types.ts`（v0.6 类型与常量）
+- `packages/tool2-portrait-predict/src/pipeline/v06/lib/features-v06.ts`（§9.2 合规特征抽取）
+- `packages/tool2-portrait-predict/src/pipeline/v06/lib/train-v06.ts`（训练与折内基线）
+- `packages/tool2-portrait-predict/src/pipeline/v06/01-prepare-dataset.ts` … `06-validate.ts`（六阶段）
+- `packages/tool2-portrait-predict/src/export/model-package.ts`、`src/export/predict-template.ts`（模型包导出器）
+- `packages/tool2-portrait-predict/src/index.ts`（本轮增补 v06 与导出器的再导出）
+- `packages/tool2-portrait-predict/test/pipeline-v06.test.ts`（26 条）、`test/export-model-package.test.ts`（12 条）
+- `scripts/v06-pipeline.mjs`（六阶段端到端实跑 + 模型包导出；见 §8 第 18 条）
+- 根 `package.json`（本轮新增 `pipeline:v06`）、`.gitignore`（本轮新增 `models/`；见 §8 第 17 条）
+
+产物（**不在 git**，`.gitignore` 的 `models/` 命中）：
+
+| 路径 | 内容 |
+| --- | --- |
+| `models/uom-tool2-portrait-v06/v1/` | 3 文件模型包（`predict.mjs` / `manifest.json` / `README.md`） |
+| `models/work-v06/` | 管线中间产物（数据集、消融结果、模型工件、指标、基线对照、校验报告） |
+
 固化数据（**不在 git**，位于主仓 `data/archive-modelevol/`）：
 
 | 包 | 文件数 | 体积（字节） |
@@ -337,3 +406,147 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 | `v06-tmall-25q4/`（3 包合计） | 218 | 6 002 192 |
 | `v04-holdout/work-package/train` | 4 | 53 064 245 |
 | `v04-holdout/work-package/holdout` | 4 | 13 366 971 |
+
+---
+
+## 10. P2-6 v0.6 六阶段移植（M08）
+
+### 10.1 交付物与归档来源对照
+
+| 新文件 | 内容 | 归档来源（只读） |
+| --- | --- | --- |
+| `packages/core/src/model/portrait-md.ts` | 画像 Markdown 解析（**同名标签求和**，v0.7 语义） | `scripts/lib/core.mts:57-78`（归档为覆盖式，**不继承**，见 §7 第 6 条） |
+| `packages/core/src/model/xlsx-rows.ts` | XLSX 读取助手的**转发口**（无实现） | `packages/core/src/normalize/xlsx.ts`（同一份实现，见 §8 第 14 条） |
+| `.../v06/lib/types.ts` | 六维目标常量、合规输入类型、人工字段黑名单 | `scripts/lib/core.mts:17-47` |
+| `.../v06/lib/features-v06.ts` | 合规特征抽取（声明式规格 + 面料词典） | `scripts/lib/features.mts:10-164` |
+| `.../v06/lib/train-v06.ts` | 逐维训练、折内 alpha 选择、折内账号均值基线 | `scripts/lib/train.mts:17-121`、`lib/core.mts:282-300` |
+| `.../v06/01-prepare-dataset.ts` | 阶段 01：解析冻结 intake（fail-closed） | `scripts/01-prepare-dataset.mts` |
+| `.../v06/02-load-folds.ts` | 阶段 02：读取**冻结** folds 并校验（**不重生成**） | `scripts/02-make-folds.mts`（只取校验部分） |
+| `.../v06/03-run-ablation.ts` | 阶段 03：合规消融阶梯 + 5 折 OOF + 折内基线配对 | `scripts/03-run-ablation.mts` |
+| `.../v06/04-select-final.ts` | 阶段 04：变体、门槛选择、全量最终模型、确定性工件 | `scripts/04-select-final.mts` |
+| `.../v06/05-evaluate.ts` | 阶段 05：指标、基线对照、验收矩阵 | `scripts/05-evaluate-report.mts`（只取 JSON 部分） |
+| `.../v06/06-validate.ts` | 阶段 06：fail-closed 校验（V1–V12） | `scripts/06-validate.mts` |
+| `scripts/v06-pipeline.mjs` | 六阶段端到端实跑 + 模型包导出 | 本项目自写（编排层） |
+
+### 10.2 移植时修掉的归档问题
+
+1. **第二份 Ridge 实现** → 一律走 `packages/core/src/model/ridge.ts` 的唯一 Cholesky 求解器（不自带第二份）。
+2. **mean/std 双算** → `fitRidge` 一次算完并存进模型。
+3. **矩阵重复构建** → 归档在标签循环里反复重建同一份矩阵，本移植提到循环外（结果不变，计算量下降）。
+4. **覆盖式画像解析（丢份额）** → 换 v0.7 同名标签求和版。
+5. **`xlsx@0.18.5` 高危漏洞** → 换 core 的 exceljs 读取（`xlsx-rows.ts` 转发同一实现）。
+6. **cwd 耦合与绝对路径** → 全部路径由调用方注入；脚本用 `git rev-parse --git-common-dir` 定位主仓固化根。
+7. **时间戳污染哈希区** → 工件拆「确定性系数区 + 溯源区」（P2 规格 §2.5），V9 才有可比性。
+8. **`localeCompare` 排序** → 改码位序（跨机器可复现；本数据集定长同宽款号，两者同序）。
+9. **归档 LOO 缺陷的同类问题**：归档 v0.4 的 fast LOO 回代写错（§4.5 第 6 条）；v0.6 侧本移植**未发现同类错误**，
+   并用 V12 对折内基线做独立复算、对 V9 做连跑字节比对，两条都通过。
+
+### 10.3 M08 验收条目逐条
+
+M08 原文：「v0.6 管线：六阶段可跑；folds.json 作为**输入**冻结不重生成；账号均值基线只用训练折；符号检验门槛生效；fail-closed 校验含 V9（连跑字节一致）与 V12（基线折内独立复算）」
+
+| # | 验收点 | 状态 | 证据 |
+| --- | --- | --- | --- |
+| M08-1 | 六阶段可跑 | **PASS** | `npm run pipeline:v06` 退出码 0；阶段 01–06 日志见 §10.5 |
+| M08-2 | folds.json 作为输入冻结、不重生成 | **PASS** | 阶段 02 只读校验（`02-load-folds.ts` 源码无 `writeFileSync`/`mkdirSync`/`rmSync`，由结构守卫测试断言）；V4 用冻结文件 sha256 比对通过 |
+| M08-3 | 账号均值基线只用训练折 | **PASS** | `03-run-ablation.ts` 内 `v06AccountMeanBaseline(dimension, train)`；单测「基线是折内基线：评估折的基线不等于全量基线」；V12 独立复算 5 折全部通过 |
+| M08-4 | 符号检验门槛生效 | **PASS** | `signTestPValue` 逐维配对检验（p<0.05）；选择分三级门槛（PASS／FAIL_SIGNIFICANCE／FAIL_NOT_POSITIVE），本轮结论 **FAIL_NOT_POSITIVE**；单测覆盖三个层级 + strict 策略 fail-closed |
+| M08-5 | fail-closed 校验含 V9（连跑字节一致） | **PASS** | V9 用系数区 sha256 比对（`79669a0f…`）；实跑 pass，单测「V9：重跑结果不一致即 fail」验证该校验会真失败 |
+| M08-6 | fail-closed 校验含 V12（基线折内独立复算） | **PASS** | V12 逐折独立重算基线、与评估期基线逐值比对、并断言「折内基线 ≠ 全量基线」；实跑 pass |
+
+**M08 整体：PASS**（管线机制项全部达标）。
+**但**：M08 不含「模型质量达标」这一条；模型质量见 §10.4（门槛 1/2/4 FAIL）。
+
+### 10.4 实跑数字（合规特征集，自测结果，非归档结论）
+
+数据：归档固化 25Q4 intake 93 款；5 折 OOF（冻结 folds）；折内账号均值基线。
+
+| 项 | 值 |
+| --- | --- |
+| 宏平均 JS 提升 | 0.0096（模型 JS 0.9188 / 基线 JS 0.9092） |
+| 宏平均余弦提升 / Share MAE 降幅 / 业务加权 JS 提升 | 0.0025 / 0.0054 / 0.0109 |
+| 选中配置 | `V1_minus_subcat`（fit/fabric/attr/cat/craft/season/ip），最终词表 30 个 |
+| 逐维 alpha | 性别 10／年龄 100／购买力 25／城市等级 50／策略人群 50／人生阶段 100 |
+| 逐维 JS 提升（p） | 性别 +0.0189(0.2132)／年龄 +0.0015(0.4069)／购买力 +0.0199(0.0002)／城市等级 +0.0046(0.0035)／策略人群 +0.0144(0.0000)／**人生阶段 −0.0018(0.8358)** |
+| 验收门槛 | 门槛 1 FAIL／门槛 2 FAIL／门槛 3 PASS／门槛 4 FAIL／门槛 5 PASS |
+
+口径说明：归档的 `oof_macro_js_lift 0.006` 与 `candidate_not_locked` 属 **spec §7 不继承清单**（第 4／5 条），
+且归档用的是**含人工字段**的特征集，本轮**不设**「复现归档数字」的断言，也未为对齐而放宽（§8 第 19 条）。
+冻结数字与逐维明细已写入 `docs/match-model-baseline.md` §7。
+
+### 10.5 RED → GREEN 证据
+
+RED 方式：先建**只有导出签名、函数体抛 `not implemented`** 的骨架（保证断言失败是**行为失败**而非导入错误），再写测试并实跑。
+
+| 阶段 | 命令 | 结果 |
+| --- | --- | --- |
+| RED | `npm run build && node --test --test-reporter=tap packages/core/dist/test/portrait-md.test.js packages/tool2-portrait-predict/dist/test/{pipeline-v06,export-model-package}.test.js` | 退出码 **1**；`tests 43 / pass 5 / fail 38`。失败原因**全部**是 `not implemented: <函数名>`（如 `not implemented: parsePortraitMd`／`not implemented: runV06Ablation`／`not implemented: buildV06ModelPackage`）；通过的 5 条是结构性守卫（只读源码，与实现无关） |
+| GREEN | 同上 | 退出码 **0**；`tests 43 / pass 43 / fail 0` |
+| 全量回归 | `npm test` | 退出码 **0**；`tests 317 / pass 317 / fail 0` |
+
+日志：`.local/p2/red-p2-6-p2-7-test.log`、`.local/p2/green-p2-6-p2-7-test.log`（`.local/` 被 `.gitignore` 忽略，不入库）。
+
+RED 期间修正过 3 处**测试自身**的缺陷（不是放宽断言）：① 解析夹具改用二进制可精确表示的占比（25%/25%/50%）；
+② 结构守卫改用词边界正则（`.fabric` 不被 `.fab` 误伤）；③ 标签按码位序排序（`['女','男']`）的期望值修正。
+
+### 10.6 §9.2 三层守卫（v0.6 路径）
+
+| 层 | 手段 | 结果 |
+| --- | --- | --- |
+| 类型层 | `V06CompliantProductInput` 的字段集合里不存在 `fab`/`mindProduct`/`memoryPoint`/`groupTag`/`genderCorrected`；测试文件用 `Extract<…, keyof TInput> extends never ? true : never` 做**编译期断言** | 编译期即阻断越界 |
+| 投影层 | `projectV06CompliantInput` 是人工字段进入下游的**唯一**入口，按白名单逐字段挑选 | 运行时白名单 |
+| 行为层 | ① 输入里塞入不同人工字段 → 合规特征**完全一致**；② 抽取器源码**不得出现**人工字段访问（去注释与字符串字面量后按词边界检查） | 变异「把人工字段接回抽取器」→ 测试失败 |
+
+另外，阶段 06 的 **V8** 在实跑里复核「选中配置只用合规特征组、特征名前缀在合规命名空间内」；
+**V7** 复核「工件里的标签全部可追溯到冻结 intake 的画像标签集合」（数据驱动的平台口径纯净检查，不硬编码任何外部标签表）。
+
+## 11. P2-7 模型导出器 + 黄金测试（M09）
+
+### 11.1 导出器与契约
+
+`packages/tool2-portrait-predict/src/export/model-package.ts` 产出**恰好 3 个文件**：
+
+| 文件 | 内容 |
+| --- | --- |
+| `predict.mjs` | 自包含预测模块（纯 Node 零依赖）：内嵌特征组规格、面料归一化规则、最终词表、逐标签系数；导出 `predict(rows)`；**不提供任何 HTTP 端点**、不监听端口 |
+| `manifest.json` | `formatVersion: 1`；`model{name,version,stage}`；`data.fingerprint{sha256,rows,columns}`（**宿主侧计算**）；`metrics`；`training{splitSeed,task,targets,trainedAt,sessionRef}`；`usage{inputs,outputs,form}` |
+| `README.md` | 加载用法、输入列、输出列、指标、数据指纹、训练信息、方法说明、口径与限制 |
+
+- `usage.outputs` 为**扁平标量列**：每个 (维度, 标签) 一列，列名 `<维度>__<标签>`（本轮 32 列）。
+- `data.fingerprint.sha256` 由**宿主侧**（导出器）对原始训练输入（管线阶段 01 产出的数据集文件）计算，本轮实测 `65cf98f6eeb88986…`。
+- `manifest.model.stage` 只写初值；**晋级不回写**，Stage 以 model-mlflow 的 **Registry** 为准。
+- **本单只产出与自校验模型包，未写进 model-mlflow**（登记属 P2-8，需另获用户授权）。
+
+### 11.2 M09 验收条目逐条
+
+M09 原文：「导出器：3 文件包、`formatVersion: 1`、`usage.outputs` 为扁平列；固定输入→精确期望分布（容差 0）的黄金测试；连跑两次字节一致」
+
+| # | 验收点 | 状态 | 证据 |
+| --- | --- | --- | --- |
+| M09-1 | 3 文件包 | **PASS** | 单测「恰好 3 个文件，目录里没有多余产物」；实跑 `models/uom-tool2-portrait-v06/v1/` 实际 3 个文件 |
+| M09-2 | `formatVersion: 1` | **PASS** | 单测「manifest.formatVersion 为 1」 |
+| M09-3 | `usage.outputs` 为扁平列 | **PASS** | 单测「usage.outputs 是扁平列（<维度>__<标签>）」；实跑 32 列，列名形如 `预测城市等级__1` |
+| M09-4 | 固定输入→精确期望分布（**容差 0**）的黄金测试 | **PASS** | 两条黄金用例：① **解析可算**用例（手写工件：男 = 0.25 + 0.5×1 = 0.75、女 = 0.75 − 0.5×1 = 0.25，`assert.equal` 精确相等）；② **训练产物冻结常量**用例（`预测性别__乙 = 0.7178879310344828`、`预测性别__甲 = 0.2821120689655172`，`assert.equal` 精确相等）。另有「导出包与管线口径一致」用例逐标签比对，锁住包内运行时与管线实现**逐位相同** |
+| M09-5 | 连跑两次字节一致 | **PASS** | 单测「predict.mjs 两次构建字节一致」（sha256 相等）、「固定 trainedAt 时 manifest.json 也字节一致」、「训练两次的系数区字节一致」；实跑 V9 系数区 sha256 两次一致（`79669a0f…`） |
+| M09-6 | 无 HTTP 预测端点 | **PASS** | 单测「包内无 HTTP 预测端点、无 HTTP 服务代码」：不得出现被引号包裹的 `/predict` 路由、不得出现 `createServer`／`node:http`／`.listen(` |
+| M09-7 | `data_sha256` 由宿主计算 | **PASS** | 单测比对 manifest 的 `data.fingerprint.sha256` 与宿主独立算出的值；导出器对非 64 位十六进制直接抛错 |
+
+**M09 整体：PASS。**
+
+### 11.3 「不出现第二份抽取实现」的做法
+
+模型包必须自包含零依赖，运行期无法 import 本项目源码。为避免出现第二份抽取实现：
+导出器把**数据**（特征组规格、面料规则源码、词表、系数）从单一来源序列化进包里，
+包内运行时代码只做**通用**的「取词项 → 组向量 → 线性打分 → 归一化」四步，
+且逐步镜像 `packages/core/src/model/ridge.ts` 的 `predictRidge` 与 `lib/train-v06.ts` 的 `normalizeV06Distribution`
+（同样的运算顺序、同样的截断与归一化），由「导出包与管线口径一致」用例逐值锁住。
+M09 只要求 3 文件／formatVersion／扁平列／黄金测试／字节一致，未要求 CLI 包装，因此本包**不含** CLI 尾码
+（model-mlflow 的 CLI 尾码由其宿主组包器追加；本项目导出器只提供 `import { predict }`，符合「消费方式仅 import 或 CLI」的契约）。
+
+### 11.4 复跑方式
+
+```bash
+npm run build
+npm run pipeline:v06        # 六阶段实跑 + 模型包导出（需固化数据；本地运行，CI 不跑）
+npm test                    # 含黄金用例与字节一致用例（合成夹具，CI 可跑）
+```

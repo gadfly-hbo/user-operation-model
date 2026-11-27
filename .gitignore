@@ -18,6 +18,9 @@ mlruns/
 mlflow-artifacts/
 mlflow.db
 
+# 工具2 模型包与管线产物（模型工件一律不入库，见工程规范 §6／§7）
+models/
+
 # 依赖与构建产物
 node_modules/
 dist/
