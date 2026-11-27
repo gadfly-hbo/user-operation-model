@@ -5,12 +5,15 @@ import {
   availableMonths,
   channelEntityIds,
   compareProductChannel,
+  DIAGNOSIS_TYPE_ALIASES,
   findChannel,
   findPortrait,
   findPortraitByEntityIds,
   findProduct,
+  FUNNEL_PHASE_ALIASES,
   listChannels,
   listProducts,
+  resolveChannelIds,
   searchByTag,
   similarProducts,
   type DataIndex,
@@ -105,6 +108,7 @@ export function createServer(index: DataIndex): McpServer {
           channelGrade: channel.channelGrade,
           city: channel.city,
           storeStatus: channel.storeStatus,
+          ...(channel.performance ? { performance: channel.performance } : {}),
         })),
       });
     },
@@ -203,7 +207,32 @@ export function createServer(index: DataIndex): McpServer {
         month: z.string().optional(),
       }),
     },
-    () => notReady('get_competitor_portrait'),
+    (args) => {
+      const brand = String(args.brand ?? '');
+      const month = typeof args.month === 'string' ? args.month : undefined;
+      const portraits = index.competitorPortraits ?? [];
+      if (portraits.length === 0) {
+        const reason = index.unavailable['get_competitor_portrait'];
+        return err(
+          'data-not-ready',
+          reason ??
+            '竞品画像目录存在但没有可识别的画像文件：期望 data/domains/07_人群画像/竞品/ 下有抖音／天猫／京东画像文件',
+          '工具 get_competitor_portrait 暂不可用',
+        );
+      }
+      const matched = portraits.filter((portrait) => {
+        if (month && portrait.month !== month) return false;
+        return matchesEntityName(portrait.entityId, brand);
+      });
+      if (matched.length === 0) {
+        return err(
+          'not-found',
+          `竞品 ${brand} 在索引中没有人群画像`,
+          `已接入的竞品：${[...new Set(portraits.map((portrait) => portrait.entityId))].join('、')}`,
+        );
+      }
+      return ok({ brand, month: matched[0]?.month, portraits: matched });
+    },
   );
 
   // ── 商品 ───────────────────────────────────────────────────
@@ -222,12 +251,22 @@ export function createServer(index: DataIndex): McpServer {
       }),
     },
     (args) => {
-      if (typeof args.channel === 'string' && args.channel !== '') {
-        return err(
-          'data-not-ready',
-          '按渠道过滤商品暂不可用：现有数据源中商品表与渠道表没有关联键',
-          '需另提供商品→渠道的归属数据',
-        );
+      const channel = typeof args.channel === 'string' && args.channel !== '' ? args.channel : undefined;
+      let channelIds: Set<string> | undefined;
+      if (channel) {
+        const links = index.productChannels ?? [];
+        if (links.length === 0) {
+          return err(
+            'data-not-ready',
+            '按渠道过滤商品暂不可用：现有数据源中商品表与渠道表没有关联键',
+            '需另提供商品→渠道的归属数据',
+          );
+        }
+        channelIds = resolveChannelIds(index, channel);
+        const known = index.channels.some((item) => channelIds!.has(item.channelId));
+        if (!known) {
+          return err('not-found', `渠道 ${channel} 不在索引中`, '用 list_channels 查看可用渠道');
+        }
       }
       const products = listProducts(index, {
         ...(typeof args.category === 'string' ? { category: args.category } : {}),
@@ -235,6 +274,7 @@ export function createServer(index: DataIndex): McpServer {
         ...(typeof args.keyword === 'string' ? { keyword: args.keyword } : {}),
         ...(typeof args.minPrice === 'number' ? { minPrice: args.minPrice } : {}),
         ...(typeof args.maxPrice === 'number' ? { maxPrice: args.maxPrice } : {}),
+        ...(channel ? { channel } : {}),
       });
       return ok({
         total: products.length,
@@ -245,6 +285,20 @@ export function createServer(index: DataIndex): McpServer {
           category: product.category,
           season: product.season,
           price: product.price,
+          ...(channelIds
+            ? {
+                channelSales: (index.productChannels ?? [])
+                  .filter(
+                    (link) => link.spu === product.spu && channelIds!.has(link.channelId),
+                  )
+                  .map((link) => ({
+                    channelId: link.channelId,
+                    ...(link.month ? { month: link.month } : {}),
+                    ...(link.retailAmount !== undefined ? { retailAmount: link.retailAmount } : {}),
+                    ...(link.retailQty !== undefined ? { retailQty: link.retailQty } : {}),
+                  })),
+              }
+            : {}),
         })),
       });
     },
@@ -340,7 +394,13 @@ export function createServer(index: DataIndex): McpServer {
     (args) => {
       const level = String(args.level ?? '');
       const key = String(args.key ?? '');
-      if (level !== 'category') {
+      if (!['category', 'series', 'hot', 'ip'].includes(level)) {
+        return err(
+          'invalid-argument',
+          `level 必须是 category／series／hot／ip，收到 ${level}`,
+        );
+      }
+      if (level !== 'category' && !(index.aggregateGroups ?? []).length) {
         return err(
           'data-not-ready',
           `聚合层级 ${level} 未接入：需要聚合口径表（商品归属哪个系列／爆款／IP）`,
@@ -349,7 +409,13 @@ export function createServer(index: DataIndex): McpServer {
       }
       const portrait = aggregatePortrait(index, { level, key });
       if (!portrait) {
-        return err('not-found', `品类 ${key} 下没有带画像的商品`);
+        // 品类层级的文案与既有实现保持一致（现状不变性）
+        return err(
+          'not-found',
+          level === 'category'
+            ? `品类 ${key} 下没有带画像的商品`
+            : `聚合层级 ${level} 下没有键 ${key} 的带画像商品`,
+        );
       }
       return ok(portrait);
     },
@@ -365,7 +431,26 @@ export function createServer(index: DataIndex): McpServer {
         phase: z.string().describe('launch / growth / clearance'),
       }),
     },
-    () => notReady('get_funnel'),
+    (args) => {
+      const spu = String(args.spu ?? '');
+      const phase = String(args.phase ?? '');
+      const rows = index.funnel ?? [];
+      if (rows.length === 0) return notReady('get_funnel');
+      const normalizedPhase =
+        FUNNEL_PHASE_ALIASES[phase] ?? FUNNEL_PHASE_ALIASES[phase.toLowerCase()] ?? phase;
+      const matched = rows.filter(
+        (row) => row.spu === spu && (phase === '' || row.phase === normalizedPhase),
+      );
+      if (matched.length === 0) {
+        const phases = [...new Set(rows.filter((row) => row.spu === spu).map((row) => row.phase))];
+        return err(
+          'not-found',
+          `款号 ${spu} 在阶段 ${phase} 没有漏斗数据`,
+          phases.length > 0 ? `该款号可用阶段：${phases.join('、')}` : '该款号没有漏斗数据',
+        );
+      }
+      return ok({ spu, phase: normalizedPhase, rows: matched });
+    },
   );
 
   // ── 对比与检索 ─────────────────────────────────────────────
@@ -474,7 +559,23 @@ export function createServer(index: DataIndex): McpServer {
         segment: z.string().optional(),
       }),
     },
-    () => notReady('list_member_features'),
+    (args) => {
+      const level = typeof args.level === 'string' && args.level !== '' ? args.level : undefined;
+      const segment =
+        typeof args.segment === 'string' && args.segment !== '' ? args.segment : undefined;
+      const features = index.memberFeatures ?? [];
+      if (features.length === 0) return notReady('list_member_features');
+      const matched = features.filter(
+        (feature) =>
+          (level === undefined || feature.level === level) &&
+          (segment === undefined || feature.segment === segment),
+      );
+      return ok({
+        total: matched.length,
+        levels: [...new Set(features.map((feature) => feature.level ?? ''))].filter(Boolean),
+        features: matched,
+      });
+    },
   );
 
   register(
@@ -487,7 +588,35 @@ export function createServer(index: DataIndex): McpServer {
         metric: z.string().describe('留存指标，如 day30 / day60 / day90'),
       }),
     },
-    () => notReady('get_retention_cohort'),
+    (args) => {
+      const cohortMonth = String(args.cohortMonth ?? '');
+      const metric = String(args.metric ?? '');
+      const rows = index.cohort ?? [];
+      if (rows.length === 0) return notReady('get_retention_cohort');
+      const row = rows.find((item) => item.cohortMonth === cohortMonth);
+      if (!row) {
+        return err(
+          'not-found',
+          `首购月份 ${cohortMonth} 没有 Cohort 留存数据`,
+          `可用分群：${[...new Set(rows.map((item) => item.cohortMonth))].join('、')}`,
+        );
+      }
+      const value = row.metrics[metric];
+      if (value === undefined) {
+        return err(
+          'not-found',
+          `分群 ${cohortMonth} 没有指标 ${metric}`,
+          `可用指标：${Object.keys(row.metrics).join('、') || '无'}`,
+        );
+      }
+      return ok({
+        cohortMonth,
+        metric,
+        value,
+        ...(row.buyers !== undefined ? { buyers: row.buyers } : {}),
+        missing: row.missing,
+      });
+    },
   );
 
   register(
@@ -499,7 +628,20 @@ export function createServer(index: DataIndex): McpServer {
         month: z.string().describe('统计月份 YYYY-MM'),
       }),
     },
-    () => notReady('get_recency_distribution'),
+    (args) => {
+      const month = String(args.month ?? '');
+      const rows = index.recency ?? [];
+      if (rows.length === 0) return notReady('get_recency_distribution');
+      const matched = rows.filter((row) => row.month === month);
+      if (matched.length === 0) {
+        return err(
+          'not-found',
+          `${month} 没有 Recency 分布数据`,
+          `可用月份：${[...new Set(rows.map((row) => row.month ?? ''))].filter(Boolean).join('、')}`,
+        );
+      }
+      return ok({ month, rows: matched });
+    },
   );
 
   register(
@@ -511,7 +653,26 @@ export function createServer(index: DataIndex): McpServer {
         month: z.string().describe('统计月份 YYYY-MM'),
       }),
     },
-    () => notReady('get_channel_flow_matrix'),
+    (args) => {
+      const month = String(args.month ?? '');
+      const rows = index.channelFlow ?? [];
+      if (rows.length === 0) return notReady('get_channel_flow_matrix');
+      const matched = rows.filter((row) => row.month === month);
+      if (matched.length === 0) {
+        return err(
+          'not-found',
+          `${month} 没有跨渠道流转数据`,
+          `可用月份：${[...new Set(rows.map((row) => row.month ?? ''))].filter(Boolean).join('、')}`,
+        );
+      }
+      const matrix: Record<string, Record<string, number>> = {};
+      for (const row of matched) {
+        if (row.buyers === undefined) continue;
+        matrix[row.from] ??= {};
+        matrix[row.from]![row.to] = row.buyers;
+      }
+      return ok({ month, rows: matched, matrix });
+    },
   );
 
   register(
@@ -524,8 +685,39 @@ export function createServer(index: DataIndex): McpServer {
         type: z.string().describe('诊断类型'),
       }),
     },
-    () => notReady('get_diagnosis'),
+    (args) => {
+      const month = String(args.month ?? '');
+      const type = String(args.type ?? '');
+      const rows = index.diagnosis ?? [];
+      if (rows.length === 0) return notReady('get_diagnosis');
+      const normalizedType =
+        DIAGNOSIS_TYPE_ALIASES[type] ?? DIAGNOSIS_TYPE_ALIASES[type.toLowerCase()] ?? type;
+      const matched = rows.filter(
+        (row) => row.month === month && row.type === normalizedType,
+      );
+      if (matched.length === 0) {
+        return err(
+          'not-found',
+          `${month} 没有 ${type} 的诊断数据`,
+          `可用类型：${[...new Set(rows.map((row) => row.type))].join('、')}`,
+        );
+      }
+      const first = matched[0]!;
+      return ok({
+        month,
+        type: normalizedType,
+        metrics: first.metrics,
+        missing: first.missing,
+        rows: matched,
+      });
+    },
   );
 
   return server;
+}
+
+/** 实体名匹配：完全相等，或一方包含另一方（实体名常带「品牌」等前后缀）。 */
+function matchesEntityName(entityId: string, brand: string): boolean {
+  if (!brand) return false;
+  return entityId === brand || entityId.includes(brand) || brand.includes(entityId);
 }
