@@ -331,7 +331,7 @@ window.DEMO = (() => {
       { name: 'get_product_portrait', ok: true, note: '单品画像部分就绪（覆盖少量款）' },
       { name: 'get_portrait_aggregate', ok: true, note: '仅品类层级可聚合' },
       { name: 'get_funnel', ok: false, note: '生命周期漏斗未接入：缺少按款按月的浏览／收藏／加购／购买／直接购买／退货数据' },
-      { name: 'compare_product_channel', ok: true, note: '有 1 组可比样本' },
+      { name: 'compare_product_channel', ok: true, note: '可产出逐维度差异' },
       { name: 'search_by_tag', ok: true, note: '反查命中正常' },
       { name: 'search_similar_products', ok: true, note: '相似款检索可用' },
       { name: 'list_member_features', ok: false, note: '会员特征字典未接入：缺少业务方案约定的会员字段表' },
