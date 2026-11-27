@@ -17,7 +17,7 @@
 | DC-5 | 口径 | 5 条口径确认回话 | **未开始（等用户／业务侧）** | 本轮不涉及代码 |
 | DC-6 | 文档 | 规则文档与 MCP 说明同步 | **完成** | `docs/normalize-rules.md` §12、`docs/mcp-usage.md`、`data/README.md` |
 | DC-7 | 验证 | 阶段一全量检查 | **完成** | §5 检查结果 |
-| DC-8 | 复核 | 非作者独立复核 | **未开始（需独立复核者）** | 交给主 agent 派单 |
+| DC-8 | 复核 | 非作者独立复核 | **完成** | 报告见 [review-stage1.md](review-stage1.md)：阻断 0、应修 F1–F4、建议 S1–S2；F1–F3 与 S1–S2 已按意见修正（见 §7-5），F4 待用户确认 |
 | DC-9 | 交付 | PR、CI、获授权 squash 合并 | **未开始（本轮只提交分支，不 push）** | — |
 | DC-10 | 阶段二 | 真实数据接入验证 | **NOT_RUN**（数据未到位） | §6 |
 
@@ -33,12 +33,17 @@
 | DC04 | 实体别名目录：画像实体名先归一再关联渠道宽表；无目录时与现状逐字一致 | **PASS** |
 | DC05 | 跨文件冲突显式映射：按表处置；无表时保持现状并记 conflict issue | **PASS**（口径说明见 §7-1） |
 | DC06 | README 时间范围声明：填写后索引只覆盖声明范围；未填写记「未声明」 | **PASS** |
-| DC07 | 商品↔渠道关联表：到位后 `list_products` 的 `channel` 过滤可用；未到位仍 `data-not-ready` | **PASS**（渠道级错配排序见 §7-3） |
+| DC07 | 商品↔渠道关联表：到位后 `list_products` 的 `channel` 过滤可用，**且错配清单可输出渠道级销售额**；未到位仍 `data-not-ready` | **NOT_PROVED**（拆项见下，整项取最弱状态） |
+| DC07-a | 关联表存在时 `list_products` 的 `channel` 过滤可用（合成关联表实测：过滤生效，`channelSales` 返回逐月零售额/零售量） | **PASS** |
+| DC07-b | 关联表不存在时返回 `data-not-ready`（与 main 现状逐字一致） | **PASS** |
+| DC07-c | 错配清单可输出**渠道级销售额**（工具1 侧接入） | **NOT_RUN**（`packages/tool1-channel-match/**` 不在本变更允许修改路径，见 §6、§7-4） |
 | DC08 | 聚合口径表：到位后 `series`／`hot`／`ip` 层级可聚合，口径沿用 §5.6 | **PASS** |
 | DC09 | 经营指标接入：`ProductDossier.performance` 与渠道经营字段；缺失不插补；成交单价可推出 | **PASS** |
 | DC10 | 不新增第三方依赖（CSV 走既有解析器、XLSX 走 exceljs）；新代码零出网 | **PASS** |
 | DC11 | 未登记的新标签／新维度不参与投影（沿用 registry 行为，补了测试） | **PASS** |
 | — | 现状不变性：无新表时索引关键字段与其余 10 个工具的返回与 main 基线一致 | **PASS**（差异见 §7-2） |
+
+> **DC07 整项状态说明（按独立复核 F1 修正）**：DC07 的验收原文含两半——「`list_products` 的 `channel` 过滤可用」与「错配清单可输出渠道级销售额」。前半（DC07-a、DC07-b）已 **PASS**；后半（DC07-c）属工具1 侧，**本变更未改该包**，实际 **NOT_RUN**。整项取最弱状态 → **NOT_PROVED**，不得表述为整体通过。工具1 侧接入需另立变更（见 §7-4）。
 
 ---
 
@@ -75,14 +80,14 @@
 | 文件 | 覆盖 |
 | --- | --- |
 | `packages/core/test/p0-tables.test.ts` | DC01/02/04–DC09（35 个用例） |
-| `packages/core/test/p0-invariance.test.ts` | 现状不变性、DC10、DC11（10 个用例） |
+| `packages/core/test/p0-invariance.test.ts` | 现状不变性、DC10、DC11（8 个用例） |
 | `packages/data-mcp/test/p0-completion.test.ts` | DC01/03/07/08 + MCP 层现状不变性（45 个用例） |
 
 测试夹具全部合成（`packages/core/test/helpers/fixtures.ts`、`packages/data-mcp/test/helpers/fixtures.ts`），无任何真实业务数据。
 
 ### 修改（文档）
 
-`docs/normalize-rules.md`（新增 §12 与若干既有条目更新）、`docs/mcp-usage.md`、`data/README.md`（声明表写法 + 新增表清单）。
+`docs/normalize-rules.md`（新增 §12 与若干既有条目更新）、`docs/mcp-usage.md`、`data/README.md`（声明表写法 + 新增表清单）、`docs/data-request.md`（`125ae8f` 补留存四表的 `月份` 列；复核修正单再改过时表述，见 §7-5）。
 
 ---
 
@@ -94,11 +99,13 @@
 | --- | --- | --- |
 | RED（core） | `node --test packages/core/dist/test/p0-{tables,invariance}.test.js` | **41 用例：14 通过 / 27 失败**（失败均为行为断言，非导入或定位错误） |
 | RED（mcp） | `node --test packages/data-mcp/dist/test/p0-completion.test.js` | **45 用例：25 通过 / 20 失败** |
-| GREEN（core） | 同 RED 命令 | 41 / 41 通过 |
+| GREEN（core） | 同 RED 命令 | **43 / 43 通过**（现存 43 例 = RED 时的 41 例 + 2 例 GREEN 后补，见下方披露） |
 | GREEN（mcp） | 同 RED 命令 | 45 / 45 通过 |
-| GREEN（全量） | `npm test` | **292 / 292 通过**（基线 204 + 新增 88） |
+| GREEN（全量） | `npm test` | **292 / 292 通过**（基线 204 + 新增 88 = p0-tables 35 + p0-invariance 8 + p0-completion 45） |
 
 失败输出留档：`.local/p0/red-core.txt`、`.local/p0/red-mcp.txt`（`.local/` 已被 `.gitignore` 排除，不入库）。
+
+> **后补测试披露（按独立复核 F2 修正）**：core 的 `千分位数值按真实值解析，不被静默截断` 与 `数值列部分匹配（如 1000元）抛错，不静默接受` 这 2 例是 **RED 之后补写**的——`.local/p0/red-core.txt` 的 41 条叶子用例名单中**不存在**它们，**没有各自的 RED 失败留档**（核对方式：按用例名取差集，现存 43 例与 RED 的 41 例差集恰为此 2 条）。补写目的是加固数值解析严格性；这 2 例有真实杀死力（复核变异 M4 使其失败），但按工程规范 §4.3「后补测试不能伪造历史失败」，此处如实标注为后补，不补造 RED 记录。RED 日志中的 41 例失败**全部**是行为断言。
 
 RED 阶段的失败项举例（core）：`漏斗表应被接入索引`（`index.funnel` 为 undefined）、`空文件抛 NormalizationError`（索引构建未抛错）、`别名目录存在时画像实体名先归一`（entityId 未归一）、`口径表存在时支持 series／hot／ip 层级`（返回 undefined）、`零售额与零售量齐全时推出真实成交单价`（`actualUnitPrice` 为 undefined）。
 
@@ -116,16 +123,26 @@ RED 阶段的失败项举例（core）：`漏斗表应被接入索引`（`index.
 | 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS**（见 §5-1） |
 | 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | **PASS**（见 §5-1） |
 | 依赖审计 | `npm audit --audit-level=high` | **PASS**（0 漏洞） |
-| 断网检查 | `npm run offline-check` | **NOT_RUN**（依赖主仓 `data/` 的真实样本；本轮未改动出网路径与构建产物构成，见 §6） |
+| 断网检查 | `npm run offline-check` | **PASS**（守卫自检 13 个出网入口全部被拦截并归因；17 工具 9 就绪 / 8 data-not-ready / 0 意外、**出网尝试 0**；工具1 演示报告 PASS。参考数据报告未跑——未设 `UOM_REFERENCE_ROOT`，见 §5-1） |
 | 阶段二验收 DC12–DC16 | — | **NOT_RUN**（真实数据未到位） |
-| 独立复核 | — | **NOT_RUN**（须由未参与本候选的复核者执行） |
+| 独立复核 | [review-stage1.md](review-stage1.md) | **完成**（SDD·TDD 独立复核者，未参与本候选）：阻断 0、应修 F1–F4、建议 S1–S2；变异 6/6 KILLED；真实数据下与 main 逐字一致。F1–F3 与 S1–S2 已按意见修正（见 §7-5）；F4（DC05 口径）**待用户确认** |
 
 ### 5-1 检查输出摘要
 
 ```
-check-docs-links.py: 检查相对链接 100 条，错误 0，告警 0
+check-docs-links.py: 检查相对链接 107 条，错误 0，告警 0
 check-data-guard.py: 数据守卫通过：索引中无业务数据目录、数据文件或超大文件
 npm audit --audit-level=high: found 0 vulnerabilities
+
+# npm run offline-check
+守卫自检通过：13 个出网入口全部被正确拦截并归因
+工具 17 | 数据就绪 9 | data-not-ready 8 | 意外 0 | 出网尝试 0
+断网端到端验证通过：17 个工具在无网络条件下全部可调用，无任何出网尝试。
+工具1 断网验证：演示报告 PASS（出网尝试 0 次）｜参考数据报告 未运行（未提供 UOM_REFERENCE_ROOT）
+
+# UOM_REFERENCE_ROOT=<抖音参考数据目录> npm run test:golden
+G1（锚点） 91.9 A → 95.4 A PASS｜G2 91.2 A → 95.3 A PASS｜G3 78.2 B → 87.7 A PASS
+G4 59.2 C → 68.9 B PASS｜G5（锚点）40.9 C → 42 C PASS｜黄金回归通过
 ```
 
 ### 5-2 真实数据路径自检（非 CI，仅本机）
@@ -139,10 +156,10 @@ npm audit --audit-level=high: found 0 vulnerabilities
 | 项 | 状态 | 原因 |
 | --- | --- | --- |
 | DC12–DC16（阶段二：真实数据验收、MCP 就绪数提升、跨渠道对比、别名目录真实效果、留存五表抽样核对） | **NOT_RUN** | 真实业务数据未到位；不写成通过 |
-| `npm run offline-check` | **NOT_RUN** | 该脚本依赖主仓 `data/` 的真实样本与网络拦截环境；本轮未新增依赖、未改动构建产物的出网面。DC10 另有静态守卫测试（新解析器源码不含 `node:http`/`fetch` 等出网调用，依赖清单未扩张） |
-| 独立复核 | **NOT_RUN** | 须由未参与本候选的复核者执行；作者测试不能替代 |
-| 工具1 错配清单的**渠道级销售额**（DC07 后半句） | **NOT_RUN** | `packages/tool1-channel-match/**` 不在本变更允许修改路径内；本轮已把渠道级成交暴露到 MCP（`list_products` 的 `channelSales`），工具1 侧接入需另立变更 |
+| 工具1 错配清单的**渠道级销售额**（DC07-c，后半句） | **NOT_RUN** | `packages/tool1-channel-match/**` 不在本变更允许修改路径内；本轮已把渠道级成交暴露到 MCP（`list_products` 的 `channelSales`），工具1 侧接入需另立变更。DC07 整项因此记 **NOT_PROVED**（见 §2） |
 | 5 条业务口径确认（spec §10 未决问题） | **NOT_RUN** | 等用户／业务侧回话；本轮按「不猜口径、按列名直读并标口径待确认」实现 |
+
+> 原记 **NOT_RUN** 的两项已在本单补齐并回填：`npm run offline-check` → **PASS**（见 §5）、独立复核 → **完成**（见 §5 与 [review-stage1.md](review-stage1.md)）。两项均未在此表中保留，避免记录滞后于事实。
 
 ---
 
@@ -158,29 +175,46 @@ npm audit --audit-level=high: found 0 vulnerabilities
 
 `index.issues` 会多出跨平台画像冲突记录（DC05 要求记录冲突）；其余关键字段（月份、商品、渠道、画像、探测说明）与 main 逐字一致，由 `packages/core/test/p0-invariance.test.ts` 锁定。真实 `data/` 下多出 1 条 issue（见 §5-2）。
 
-### 7-3 `docs/data-request.md` 与实现的列契约存在两处差异（待业务侧同步）
+### 7-3 `docs/data-request.md` 与实现的列契约差异（已同步）
 
-1. **留存三表（Recency／流转矩阵／诊断）需要 `月份` 列**：三个 MCP 工具都按月检索，`月份` 是必需列。要数清单第 6–8 项未列该列 → 需补。
+1. **留存三表（Recency／流转矩阵／诊断）需要 `月份` 列**：三个 MCP 工具都按月检索，`月份` 是必需列。原要数清单第 6–8 项未列该列 → **已在 `125ae8f` 补齐**（第 6–9 项均标注「必带 `月份` 列」）。
 2. **渠道／商品范围的声明写法**：实现要求用标识清单（`D00001 演示账号1`），散文式描述（"抖音直播 4 个账号"）无法解析成标识，遇到时会**不裁剪并记说明**（不猜）。`data/README.md` 已给出写法示例。
 
-`docs/data-request.md` 不在本轮允许修改路径内，故未改；请主 agent 决定是否另起一次文档修订。
+**更正（前一句与 spec §6 不符）**：`docs/data-request.md` **在**本变更的允许修改路径内（spec §6 明列）。该文中「7 类数据尚未实现解析器、文件到位也不会自动可用」的过时表述已在**本单**按实现现状改写（复核 F3），见 §7-5。
 
 ### 7-4 其它记录在案、未在本轮修的问题
 
 | 问题 | 影响 | 处置 |
 | --- | --- | --- |
-| `get_portrait_aggregate` 对**非法 level**（如 `foo`）的返回从 `data-not-ready` 改为 `invalid-argument` | 非法入参的报错更准确；合法层级（category／series／hot／ip）的返回与 main 一致 | 有意变更，已记录；如需严格逐字一致可回退 |
+| `get_portrait_aggregate` 对**非法 level**（如 `foo`）的返回从 `data-not-ready` 改为 `invalid-argument` | 非法入参的报错更准确；合法层级（category／series／hot／ip）的返回与 main 一致 | 有意变更，已记录；本单已把该行为补进 `docs/mcp-usage.md` 的工具行（复核 S1），实测返回 `invalid-argument`／`level 必须是 category／series／hot／ip，收到 …`；如需严格逐字一致可回退 |
 | 竞品画像目录若存在文件，实体类型由「channel/brand」变为「competitor」 | 真实 `data/` 无该目录，当前无影响 | 有意为之（竞品不应混进渠道画像），已在本文件与归一化规则 §12.10 记录 |
 | 竞品画像按实体名匹配用了「相等或互相包含」 | 同名不同实体的竞品可能误匹配 | 保守做法，等业务侧给出稳定的竞品标识后再收紧 |
 | 商品／渠道经营指标多月份时档案只取最新月份 | 跨月对比需另行查询 | 已在 issue 中记录被跳过的月份数，规则已写入归一化规则 §12.9 |
 | `data/README.md` 的声明解析只认 Markdown 表格 | 非表格写法会被忽略 | 按既有模板实现，未扩大解析面 |
 
+### 7-5 独立复核应修项修正记录（复核 F1–F3、S1–S2）
+
+复核报告：[review-stage1.md](review-stage1.md)（SDD·TDD 独立复核者，未参与本候选任何部分）。
+
+| 发现 | 状态 | 修正位置 | 要点 |
+| --- | --- | --- | --- |
+| **F1** DC07「半句 NOT_RUN 却整项 PASS」 | **已修正** | 本文件 §2（DC07 拆为 DC07-a/b/c）、§2 表下说明、§6 | 三个子断言各自记真实状态；整项取最弱 → **NOT_PROVED**，并写明已验证部分与未运行原因 |
+| **F2** 用例计数与 RED 覆盖不实 | **已修正** | 本文件 §3（p0-invariance 10 → **8**）、§4（GREEN core 41/41 → **43/43**）及新增披露段 | 计数按实际重数（35 + 8 + 45 = 88；RED 叶子 41 = 14 通过 / 27 失败）；如实披露 2 例为 RED 后补、无各自 RED 留档，不补造 RED 记录 |
+| **F3** `docs/data-request.md` 表述过时 + 「不在允许路径」与 spec §6 不符 | **已修正** | `docs/data-request.md` 第 5 行与「我们这边收到数据后做的事」整节；本文件 §7-3 | 按实现现状改写：已实现的写「已实现」并指向代码位置；确实未做的（第 9、10 项归 P3 报表阶段、工具1 渠道级错配排序）写明归属 |
+| **S1** `mcp-usage.md` 未说明非法 level 行为 | **已修正** | `docs/mcp-usage.md` 的 `get_portrait_aggregate` 行 | 按实测写：非法 level → `invalid-argument`；合法非 category 层级但无口径表 → `data-not-ready` + hint |
+| **S2** 断网检查与独立复核状态滞后 | **已修正** | 本文件 §5、§5-1、§6 表下说明 | 断网检查 **PASS**（13 入口全拦截归因；17 工具 9/8/0；出网尝试 0）；独立复核**已完成**，报告见 `review-stage1.md`；F4 待用户确认 |
+| **F4** DC05 冲突口径（spec 括注「保留先到一条」与「保持现状」并列） | **待用户确认** | 本文件 §7-1（现状记录保留） | 本单**未改动实现行为、未改 spec 措辞**；等用户拍板后再定处置并同步规格版本说明 |
+
+本单修正的文件：`openspec/changes/p0-data-completion/result.md`、`openspec/changes/p0-data-completion/review-stage1.md`（复核报告入库）、`docs/data-request.md`、`docs/mcp-usage.md`。**未改任何解析器／索引／MCP 代码行为**。
+
 ---
 
 ## 8. 范围核对
 
-本轮改动仅落在 spec §6 允许路径内：`packages/core/src/normalize/**`、`packages/core/src/index/**`、`packages/data-mcp/src/server.ts`、两包 `test/**`、`docs/normalize-rules.md`、`docs/mcp-usage.md`、`data/README.md`、`openspec/changes/p0-data-completion/**`。
+本轮改动仅落在 spec §6 允许路径内：`packages/core/src/normalize/**`、`packages/core/src/index/**`、`packages/data-mcp/src/server.ts`、两包 `test/**`、`docs/normalize-rules.md`、`docs/mcp-usage.md`、`docs/data-request.md`、`data/README.md`、`openspec/changes/p0-data-completion/**`。
 
 未改：`packages/core/src/match/**`、`packages/tool1-channel-match/**`、`site/web/**`、`packages/core/src/product/types.ts`（商品档案类型未改，`performance`／`funnel`／`channelPerformance` 字段本就存在）。
+
+复核应修项修正单（本单）只动了记录与文档：`openspec/changes/p0-data-completion/result.md`、`openspec/changes/p0-data-completion/review-stage1.md`、`docs/data-request.md`、`docs/mcp-usage.md`；**解析器／索引／MCP 代码零改动**（`npm test` 292/292 不变）。
 
 `data/` 下未新增任何文件；业务数据不入库（`check-data-guard.py` 通过）。

@@ -53,7 +53,7 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 | `list_products` | `category?` `season?` `keyword?` `minPrice?` `maxPrice?` `channel?` | `channel` 过滤需商品↔渠道关联数据（`data/tables/product-channel.csv`）：**解析器已实现**，表到位后可用；表未到位时返回 `data-not-ready` |
 | `get_product_dossier` | `spu` | 单品全量档案（属性 + FAB + 画像 + 漏斗 + 经营指标） |
 | `get_product_portrait` | `spu` `dimensions?` `month?` | 单品画像，可限定统一维度 |
-| `get_portrait_aggregate` | `level` `key` | `category` 始终可用；`series`／`hot`／`ip` 需聚合口径表（`data/tables/aggregate-groups.csv`）：**解析器已实现**，表到位后可用；表未到位时返回 `data-not-ready` |
+| `get_portrait_aggregate` | `level` `key` | `category` 始终可用；`series`／`hot`／`ip` 需聚合口径表（`data/tables/aggregate-groups.csv`）：**解析器已实现**，表到位后可用；表未到位时返回 `data-not-ready`（带 hint「当前仅支持 category 层级…」）。**`level` 不在 `category`／`series`／`hot`／`ip` 之内（如 `foo`、空串、大小写不符的 `Series`）返回 `invalid-argument`**，message 形如 `level 必须是 category／series／hot／ip，收到 …`（末尾附收到的原值）；这是 P0 数据收尾阶段一的有意变更，阶段一之前返回 `data-not-ready` |
 | `get_funnel` | `spu` `phase` | **解析器已实现**：漏斗表 `data/tables/funnel.csv` 到位后可用；表未到位时返回 `data-not-ready` |
 
 ### 对比与检索
@@ -102,6 +102,8 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 | `invalid-argument` | 参数不合法 |
 
 **空结果与数据缺失严格区分**：数据未就位时返回 `data-not-ready` 并指明缺哪个文件，**不返回空数组**。
+
+**非法入参单独成类**：`invalid-argument` 表示参数本身不合法（取值不在允许集合内），与「数据没到位」的 `data-not-ready` 是两回事。逐工具的非法入参行为见上表（如 `get_portrait_aggregate` 的 `level`、`get_brand_portrait` 的 `scope`）。
 
 ## 实体标识说明
 
