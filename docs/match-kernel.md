@@ -121,7 +121,7 @@ npm run tool1 -- --dataset data --data-root data --month 2024-01
 ## 8. 校验命令
 
 ```bash
-npm run check                 # 类型检查 + 203 例单测
+npm run check                 # 类型检查 + 204 例单测
 npm run offline-check         # 断网守卫 + MCP 端到端 + 工具1 生成器断网
 UOM_REFERENCE_ROOT=... npm run test:golden   # 黄金回归（本地，CI 不跑）
 ```

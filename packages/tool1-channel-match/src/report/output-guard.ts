@@ -1,4 +1,5 @@
-import { relative, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
+import { tryFindRepoRoot } from './assets.js';
 
 /**
  * 输出路径守卫。
@@ -28,9 +29,14 @@ const FORBIDDEN_PREFIXES = ['packages', 'site', 'docs', 'openspec', 'output', 's
 export function assertOutputTarget(
   target: string,
   mode: OutputMode,
-  repoRoot: string = process.cwd(),
+  repoRoot?: string,
 ): void {
-  const relativePath = relative(resolve(repoRoot), resolve(target));
+  const absolute = resolve(target);
+  // 仓库根**从目标路径自身向上定位**（再退回当前目录），
+  // 不能只认当前工作目录：否则在子目录里用 `../` 指向仓库内的跟踪路径会被误判为「仓库之外」而放行。
+  const root = repoRoot ?? tryFindRepoRoot(dirname(absolute)) ?? tryFindRepoRoot(process.cwd());
+  if (!root) return; // 不在任何仓库内
+  const relativePath = relative(root, absolute);
   // 仓库之外：允许（例如临时目录）
   if (relativePath.startsWith('..')) return;
 

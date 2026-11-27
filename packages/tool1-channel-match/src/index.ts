@@ -16,7 +16,7 @@ export {
   REPORT_ROOT_PATH,
   type OutputMode,
 } from './report/output-guard.js';
-export { findRepoRoot, readBaseCss } from './report/assets.js';
+export { findRepoRoot, tryFindRepoRoot, readBaseCss } from './report/assets.js';
 export { REPORT_CSS } from './report/styles.js';
 export { buildDemoReport, DEMO_MONTH, DEMO_GENERATED_AT } from './demo/build.js';
 export { DEMO_CHANNELS, DEMO_PRODUCTS, toPortraitInput } from './demo/fixture.js';

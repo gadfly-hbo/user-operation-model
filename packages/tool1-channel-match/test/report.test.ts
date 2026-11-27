@@ -1,5 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { MATCH_CONFIG, scoreMatch, type MatchPortraitInput, type MatchResult } from '@uom/core';
 import {
   assertOutputTarget,
@@ -129,6 +132,8 @@ describe('静态报告 · 参数来源单一', () => {
     const tunedScore = (byTuned.match(/heat__cell heat__cell--([a-z]+)"/) ?? [])[1];
     assert.notEqual(defaultScore, tunedScore, '改评级门槛后热力图分档必须随之变化');
     assert.ok(byTuned.includes('建议主推 · ≥ 99.5'), '图例文案必须来自配置');
+    assert.ok(byTuned.includes('≥ 99.5 分，建议主推'), '台账条注释必须来自配置');
+    assert.ok(!byTuned.includes('≥ 80 分，建议主推'), '台账条注释不得写死阈值');
     assert.ok(byTuned.includes('裁剪到 [25, 99.5]') || byTuned.includes('裁剪到'));
     assert.ok(byTuned.includes(`配置版本：${tuned.version}`));
   });
@@ -159,6 +164,29 @@ describe('输出路径守卫', () => {
         `${target} 应被拒绝`,
       );
     }
+  });
+
+  test('仓库根从目标路径自身定位：子目录用 ../ 绕不过去', () => {
+    // 造一个带站点目录的「仓库」，再从别处用 ../ 指向它的跟踪路径
+    const fakeRepo = mkdtempSync(join(tmpdir(), 'uom-guard-repo-'));
+    mkdirSync(join(fakeRepo, 'site', 'web', 'assets'), { recursive: true });
+    writeFileSync(join(fakeRepo, 'site', 'web', 'assets', 'base.css'), '/* demo */', 'utf8');
+
+    assert.throws(
+      () => assertOutputTarget(join(fakeRepo, 'site', 'web', 'x.html'), 'report'),
+      /拒绝/,
+      '真实数据产物不得写进仓库跟踪路径',
+    );
+    assert.throws(
+      () => assertOutputTarget(join(fakeRepo, 'packages', 'x.html'), 'report'),
+      /拒绝/,
+    );
+    assert.doesNotThrow(() =>
+      assertOutputTarget(join(fakeRepo, 'data', 'reports', 'tool1', 'x.html'), 'report'),
+    );
+    assert.doesNotThrow(() =>
+      assertOutputTarget(join(fakeRepo, 'site', 'web', 'tool1-report.html'), 'demo'),
+    );
   });
 
   test('合成演示产物只允许落在站点报告页；仓库外路径放行', () => {

@@ -166,7 +166,11 @@ function formatShare(value: number | undefined): string {
   return `${Math.round(value * 10000) / 100}%`;
 }
 
-function ledger(input: ReportInput, results: Map<string, MatchResult>): string {
+function ledger(
+  input: ReportInput,
+  results: Map<string, MatchResult>,
+  config: MatchConfig,
+): string {
   const scored = [...results.values()].filter((result) => result.totalScore !== null);
   const high = scored.filter((result) => result.grade === 'A').length;
   const fused = scored.filter((result) => result.fuse).length;
@@ -175,8 +179,8 @@ function ledger(input: ReportInput, results: Map<string, MatchResult>): string {
     { label: '候选商品', value: input.products.length, note: '款号级' },
     { label: '候选渠道', value: input.channels.length, note: '渠道实体' },
     { label: '已评分单元', value: scored.length, note: `共 ${input.products.length * input.channels.length} 格` },
-    { label: '高匹配单元', value: high, tone: 'high', note: '≥ 80 分，建议主推' },
-    { label: '熔断单元', value: fused, tone: 'low', note: '< 45 分，不建议投放' },
+    { label: '高匹配单元', value: high, tone: 'high', note: `≥ ${config.grades.a} 分，建议主推` },
+    { label: '熔断单元', value: fused, tone: 'low', note: `< ${config.fuseThreshold} 分，不建议投放` },
     { label: '六维全可用', value: full, tone: 'accent', note: '六个维度均参与评分' },
   ];
   return `<div class="ledger">${cells
@@ -455,7 +459,7 @@ ${REPORT_CSS}
   ${demoBanner}
 
   <section class="report__section">
-    ${ledger(input, results)}
+    ${ledger(input, results, config)}
     <div class="tools">
       <span class="tools__label">视角</span>
       <div class="segmented" id="axisBox">

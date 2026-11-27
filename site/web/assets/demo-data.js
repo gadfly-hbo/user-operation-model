@@ -224,10 +224,10 @@ window.DEMO = (() => {
    */
   const demoBands = { a: 80, b: 60, fuse: 45 };
   const matchLegend = [
-    { grade: 'A', label: `建议主推 · ≥ ${demoBands.a}`, tone: 'strong' },
-    { grade: 'B', label: `建议微调 · ${demoBands.b}–${demoBands.a - 0.1}`, tone: 'mid' },
-    { grade: 'C', label: `慎选 · ${demoBands.fuse}–${demoBands.b - 0.1}`, tone: 'weak' },
-    { grade: '熔断', label: `不建议 · < ${demoBands.fuse}（C 级内）`, tone: 'none' },
+    { grade: 'A', label: `示意分档 · 建议主推 · ≥ ${demoBands.a}`, tone: 'strong' },
+    { grade: 'B', label: `示意分档 · 建议微调 · ${demoBands.b}–${demoBands.a - 0.1}`, tone: 'mid' },
+    { grade: 'C', label: `示意分档 · 慎选 · ${demoBands.fuse}–${demoBands.b - 0.1}`, tone: 'weak' },
+    { grade: '熔断', label: `示意分档 · 不建议 · < ${demoBands.fuse}（C 级内）`, tone: 'none' },
   ];
 
   /* ── 新品预测（工具 2） ─────────────────────────────────── */
