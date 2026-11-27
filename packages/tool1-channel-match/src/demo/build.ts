@@ -35,6 +35,7 @@ export function buildDemoReport(): ReportInput {
   }
 
   return {
+    config: MATCH_CONFIG,
     meta: {
       title: '工具 1 · 货渠匹配看板（合成演示）',
       source: '合成演示数据',

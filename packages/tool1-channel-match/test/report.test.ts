@@ -1,7 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreMatch, type MatchPortraitInput, type MatchResult } from '@uom/core';
+import { MATCH_CONFIG, scoreMatch, type MatchPortraitInput, type MatchResult } from '@uom/core';
 import {
+  assertOutputTarget,
   buildDemoReport,
   buildMismatchList,
   mismatchCsv,
@@ -48,6 +49,7 @@ function result(spu: string, channelId: string, price = 199): MatchResult {
 
 function reportInput(results: MatchResult[], products?: ReportInput['products']): ReportInput {
   return {
+    config: MATCH_CONFIG,
     meta: {
       title: '测试报告',
       source: '合成演示数据',
@@ -111,6 +113,63 @@ describe('静态报告 · 离线与自包含', () => {
     const html = renderReport(input);
     assert.ok(!html.includes('<script>alert'), '商品名中的脚本标签必须被转义');
     assert.ok(html.includes('&lt;script&gt;alert'));
+  });
+});
+
+describe('静态报告 · 参数来源单一', () => {
+  test('热力图分档与图例跟随配置里的评级门槛，不写死第二份阈值', () => {
+    // 单元总分 98.2：默认 A 门槛 80 → A 级色；调成 99.5 → 落到 B 级色
+    const tuned = { ...MATCH_CONFIG, grades: { a: 99.5, b: 60 } };
+    const input = reportInput([result('SPU-1', 'CH-1')]);
+    const byDefault = renderReport(input);
+    const byTuned = renderReport({ ...input, config: tuned });
+
+    // 只取矩阵单元格的 class（图例色块是 heat__cell--X，class 名不同）
+    const defaultScore = (byDefault.match(/heat__cell heat__cell--([a-z]+)"/) ?? [])[1];
+    const tunedScore = (byTuned.match(/heat__cell heat__cell--([a-z]+)"/) ?? [])[1];
+    assert.notEqual(defaultScore, tunedScore, '改评级门槛后热力图分档必须随之变化');
+    assert.ok(byTuned.includes('建议主推 · ≥ 99.5'), '图例文案必须来自配置');
+    assert.ok(byTuned.includes('裁剪到 [25, 99.5]') || byTuned.includes('裁剪到'));
+    assert.ok(byTuned.includes(`配置版本：${tuned.version}`));
+  });
+
+  test('口径折叠区不再写死混合比例与权重表', () => {
+    const html = renderReport(reportInput([result('SPU-1', 'CH-1')]));
+    assert.ok(html.includes(`0.6 × JS 相似度`), '混合比例应来自配置');
+    assert.ok(html.includes('维度权重：'), '权重表应由配置渲染');
+  });
+});
+
+describe('输出路径守卫', () => {
+  test('真实数据产物只允许落在 data/reports/ 之下', () => {
+    assert.doesNotThrow(() =>
+      assertOutputTarget('/repo/data/reports/tool1/x.html', 'report', '/repo'),
+    );
+    for (const target of [
+      '/repo/site/web/x.html',
+      '/repo/packages/core/x.html',
+      '/repo/docs/x.html',
+      '/repo/openspec/changes/x.md',
+      '/repo/output/x.html',
+      '/repo/data/domains/x.csv',
+    ]) {
+      assert.throws(
+        () => assertOutputTarget(target, 'report', '/repo'),
+        /拒绝/,
+        `${target} 应被拒绝`,
+      );
+    }
+  });
+
+  test('合成演示产物只允许落在站点报告页；仓库外路径放行', () => {
+    assert.doesNotThrow(() =>
+      assertOutputTarget('/repo/site/web/tool1-report.html', 'demo', '/repo'),
+    );
+    assert.throws(
+      () => assertOutputTarget('/repo/packages/tmp/x.html', 'demo', '/repo'),
+      /拒绝/,
+    );
+    assert.doesNotThrow(() => assertOutputTarget('/tmp/uom/x.html', 'demo', '/repo'));
   });
 });
 

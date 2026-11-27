@@ -1,4 +1,4 @@
-import type { MatchResult } from '@uom/core';
+import type { MatchConfig, MatchResult } from '@uom/core';
 import { escapeHtml, embedJson } from './escape.js';
 import { dimensionLabel } from './labels.js';
 import { buildMismatchList, indexResults, mismatchCsv } from './mismatch.js';
@@ -20,12 +20,16 @@ export interface RenderOptions {
   topN?: number;
 }
 
-/** 热力图色阶：A ≥ 80、B ≥ 60、C ≥ 45，45 以下为熔断红。 */
-function heatClass(score: number | null): string {
+/**
+ * 热力图色阶：A ≥ 评级 A 门槛、B ≥ 评级 B 门槛、C ≥ 熔断阈值，熔断阈值以下为红。
+ *
+ * 阈值全部来自**计算结果所用的同一份配置**，不在渲染层写死第二份。
+ */
+function heatClass(score: number | null, config: MatchConfig): string {
   if (score === null) return 'none';
-  if (score >= 80) return 'a';
-  if (score >= 60) return 'b';
-  if (score >= 45) return 'c';
+  if (score >= config.grades.a) return 'a';
+  if (score >= config.grades.b) return 'b';
+  if (score >= config.fuseThreshold) return 'c';
   return 'x';
 }
 
@@ -190,6 +194,7 @@ function ledger(input: ReportInput, results: Map<string, MatchResult>): string {
 function renderMatrix(
   input: ReportInput,
   results: Map<string, MatchResult>,
+  config: MatchConfig,
   axis: 'row' | 'col',
 ): string {
   const byRow = axis === 'row';
@@ -217,7 +222,7 @@ function renderMatrix(
         const title = result
           ? `${label} × ${other}：${score === null ? '未评分' : score.toFixed(1)}`
           : `${label} × ${other}：无画像`;
-        return `<td class="heat__cell heat__cell--${heatClass(score)}"
+        return `<td class="heat__cell heat__cell--${heatClass(score, config)}"
           data-cell="${escapeHtml(`${spu}::${channelId}`)}"
           title="${escapeHtml(title)}">${score === null ? '—' : score.toFixed(0)}</td>`;
       });
@@ -342,6 +347,7 @@ const CLIENT_SCRIPT = `
 /** 渲染静态报告。 */
 export function renderReport(input: ReportInput, options: RenderOptions = {}): string {
   const baseCss = options.baseCss ?? readBaseCss();
+  const config = input.config;
   const topN = options.topN ?? 20;
   const results = indexResults(input.results);
   const unscoredByKey = new Map(
@@ -368,10 +374,10 @@ export function renderReport(input: ReportInput, options: RenderOptions = {}): s
   }
 
   const legend = [
-    { grade: 'A', label: '建议主推 · ≥ 80', tone: 'a' },
-    { grade: 'B', label: '建议微调 · 60–79.9', tone: 'b' },
-    { grade: 'C', label: '慎选 · 45–59.9', tone: 'c' },
-    { grade: '熔断', label: '不建议 · < 45（C 级内）', tone: 'x' },
+    { grade: 'A', label: `建议主推 · ≥ ${config.grades.a}`, tone: 'a' },
+    { grade: 'B', label: `建议微调 · ${config.grades.b}–${config.grades.a - 0.1}`, tone: 'b' },
+    { grade: 'C', label: `慎选 · ${config.fuseThreshold}–${config.grades.b - 0.1}`, tone: 'c' },
+    { grade: '熔断', label: `不建议 · < ${config.fuseThreshold}（C 级内）`, tone: 'x' },
   ];
 
   const metaRows = [
@@ -388,12 +394,16 @@ export function renderReport(input: ReportInput, options: RenderOptions = {}): s
 
   const techBody = [
     '口径出处：产品讨论稿 §7.4（工具 1／工具 2 共用匹配内核）。',
-    '单维度分 = 0.60 × JS 相似度 + 0.25 × 余弦相似度 + 0.15 × Top3 重合度；缺维度时对有效维度重归一化。',
+    `单维度分 = ${config.blend.js} × JS 相似度 + ${config.blend.cosine} × 余弦相似度 + ${config.blend.top3} × Top3 重合度；缺维度时对有效维度重归一化。`,
     '消费能力维度由可配置客单承接表按「价格带 × 渠道高／低消费占比」判定，并给出全局惩罚。',
-    '综合分 = Σ(维度分 × 权重) / Σ可用权重 + 客单惩罚，四舍五入 1 位小数，裁剪到 [25, 99.5]。',
-    '评级：A ≥ 80，B 60–79.9，C < 60；C 级内 < 45 标记为熔断（只做显示，不改变评级）。',
+    `综合分 = Σ(维度分 × 权重) / Σ可用权重 + 客单惩罚，四舍五入 1 位小数，裁剪到 [${config.clamp.min}, ${config.clamp.max}]。`,
+    `评级：A ≥ ${config.grades.a}，B ${config.grades.b}–${config.grades.a - 0.1}，C < ${config.grades.b}；C 级内 < ${config.fuseThreshold} 标记为熔断（只做显示，不改变评级）。`,
+    '维度权重：' +
+      Object.entries(config.weights)
+        .map(([dimension, weight]) => `${dimensionLabel(dimension)} ${weight}`)
+        .join(' · '),
     '错配优先级 = 零售额 × (1 - 匹配分/100)，降序；零售额为商品级指标，无渠道级分解，该排序表示组合调整优先级，不代表该渠道实际销售额。',
-    `配置版本：${input.meta.configVersion}（权重为初值，未经真实数据校准，记「已调整」，不得称「已优化」）。`,
+    `配置版本：${config.version}（权重为初值，未经真实数据校准，记「已调整」，不得称「已优化」）。`,
   ].join('\n');
 
   const demoBanner = input.meta.isDemo
@@ -464,8 +474,8 @@ ${REPORT_CSS}
           .join('')}
       </div>
     </div>
-    ${renderMatrix(input, results, 'row')}
-    ${renderMatrix(input, results, 'col')}
+    ${renderMatrix(input, results, config, 'row')}
+    ${renderMatrix(input, results, config, 'col')}
   </section>
 
   <section class="report__section">

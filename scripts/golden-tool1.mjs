@@ -11,7 +11,9 @@
  *   UOM_REFERENCE_ROOT="$HOME/工作/抖音货渠匹配/product/数据输入" npm run test:golden
  *
  * 缺参考数据时**明确失败**，不跳过、不静默通过。
- * 本文件含款号与店铺名（与工程规范 §4.3 已记录的基准用例一致），不含任何业务数值明细。
+ * 本文件只含**标识符与聚合评分**（款号、店铺名、单品均价、0–100 匹配分）；
+ * 不含零售额／零售量／UV／退货率等经营明细。两条锚点的单价与旧分早在 P0
+ * 阶段已随 `docs/engineering-workflow.md` §4.3 进入公开仓库。
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';

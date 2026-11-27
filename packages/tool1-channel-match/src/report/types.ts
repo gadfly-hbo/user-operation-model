@@ -1,4 +1,4 @@
-import type { MatchResult } from '@uom/core';
+import type { MatchConfig, MatchResult } from '@uom/core';
 
 /** 报告里的商品。 */
 export interface ReportProduct {
@@ -45,6 +45,12 @@ export interface ReportMeta {
 /** 渲染报告所需的全部输入。 */
 export interface ReportInput {
   meta: ReportMeta;
+  /**
+   * 评分配置（**与计算结果所用的是同一份**）。
+   * 渲染层不再写死评级阈值、熔断阈值、混合比例与裁剪区间，全部从这里取，
+   * 避免出现第二份参数副本。
+   */
+  config: MatchConfig;
   products: ReportProduct[];
   channels: ReportChannel[];
   /** 已评分单元的结果。 */

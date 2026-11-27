@@ -786,6 +786,10 @@ details.tech .tech__body {
   background: color-mix(in srgb, var(--sev-mid) 8%, var(--card));
   font-size: var(--type-meta); color: var(--ink-2);
 }
+.report__banner--local {
+  border-color: color-mix(in srgb, var(--algo) 40%, var(--rule));
+  background: color-mix(in srgb, var(--algo) 7%, var(--card));
+}
 .matrix { overflow: auto; }
 .matrix[hidden] { display: none; }
 .matrix table { width: max-content; min-width: 100%; }
@@ -1293,10 +1297,11 @@ table.dimtable td.evidence { color: var(--ink-3); font-family: var(--font-mono);
   <details class="tech">
     <summary>评分口径与维度权重</summary>
     <div class="tech__body">口径出处：产品讨论稿 §7.4（工具 1／工具 2 共用匹配内核）。
-单维度分 = 0.60 × JS 相似度 + 0.25 × 余弦相似度 + 0.15 × Top3 重合度；缺维度时对有效维度重归一化。
+单维度分 = 0.6 × JS 相似度 + 0.25 × 余弦相似度 + 0.15 × Top3 重合度；缺维度时对有效维度重归一化。
 消费能力维度由可配置客单承接表按「价格带 × 渠道高／低消费占比」判定，并给出全局惩罚。
 综合分 = Σ(维度分 × 权重) / Σ可用权重 + 客单惩罚，四舍五入 1 位小数，裁剪到 [25, 99.5]。
 评级：A ≥ 80，B 60–79.9，C &lt; 60；C 级内 &lt; 45 标记为熔断（只做显示，不改变评级）。
+维度权重：预测性别 0.1 · 预测年龄段 0.2 · 消费能力 0.15 · 城市等级 0.1 · 策略人群 0.25 · 预测人生阶段 0.2
 错配优先级 = 零售额 × (1 - 匹配分/100)，降序；零售额为商品级指标，无渠道级分解，该排序表示组合调整优先级，不代表该渠道实际销售额。
 配置版本：p1-2026-11-uncalibrated（权重为初值，未经真实数据校准，记「已调整」，不得称「已优化」）。</div>
   </details>

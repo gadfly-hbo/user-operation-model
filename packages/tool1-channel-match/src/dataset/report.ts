@@ -1,4 +1,4 @@
-import { MATCH_CONFIG, scoreMatch, type MatchResult } from '@uom/core';
+import { MATCH_CONFIG, scoreMatch, type MatchConfig, type MatchResult } from '@uom/core';
 import type { ReportInput } from '../report/types.js';
 import type { MatchDataset } from './types.js';
 
@@ -9,7 +9,10 @@ import type { MatchDataset } from './types.js';
  */
 
 /** 对数据集中的每个「商品 × 渠道」组合打分。 */
-export function scoreDataset(dataset: MatchDataset): MatchResult[] {
+export function scoreDataset(
+  dataset: MatchDataset,
+  config: MatchConfig = MATCH_CONFIG,
+): MatchResult[] {
   const results: MatchResult[] = [];
   for (const product of dataset.products) {
     if (!product.portrait) continue;
@@ -25,7 +28,7 @@ export function scoreDataset(dataset: MatchDataset): MatchResult[] {
           ...(product.price === undefined
             ? {}
             : { price: product.price, priceSource: product.priceSource ?? 'missing' }),
-        }),
+        }, config),
       );
     }
   }
@@ -37,6 +40,7 @@ export function buildReportInput(
   dataset: MatchDataset,
   results: MatchResult[],
   generatedAt: string,
+  config: MatchConfig = MATCH_CONFIG,
 ): ReportInput {
   return {
     meta: {
@@ -45,9 +49,10 @@ export function buildReportInput(
       isDemo: false,
       month: dataset.selectedMonth,
       generatedAt,
-      configVersion: MATCH_CONFIG.version,
+      configVersion: config.version,
       notes: dataset.notes,
     },
+    config,
     products: dataset.products.map((product) => ({
       spu: product.spu,
       name: product.name ?? product.spu,

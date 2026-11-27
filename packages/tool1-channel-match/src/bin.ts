@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { buildDemoReport } from './demo/build.js';
 import {
   buildDataRootDataset,
@@ -10,6 +10,7 @@ import {
 } from './dataset/index.js';
 import type { MatchDataset } from './dataset/types.js';
 import { buildMismatchList, mismatchCsv } from './report/mismatch.js';
+import { assertOutputTarget } from './report/output-guard.js';
 import { renderReport } from './report/render.js';
 import type { ReportInput } from './report/types.js';
 
@@ -114,20 +115,6 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
-/** 禁止写进数据源目录。 */
-function assertNotDataSource(target: string): void {
-  const relativePath = relative(process.cwd(), resolve(target));
-  if (relativePath.startsWith('..')) return;
-  const [first] = relativePath.split('/');
-  if (first === 'data' && relativePath.split('/').length > 1) {
-    // data/ 下的产物目录是允许的（data/reports/…），但不能写进数据源区
-    const second = relativePath.split('/')[1];
-    if (second !== 'reports') {
-      throw new Error(`拒绝写入数据源目录：${target}`);
-    }
-  }
-}
-
 async function buildDataset(args: Args): Promise<MatchDataset> {
   if (args.dataset === 'reference') {
     if (!args.referenceRoot) {
@@ -153,7 +140,7 @@ function writeRealReport(dataset: MatchDataset, args: Args): void {
   const csv = mismatchCsv(input, rows);
 
   const outDir = resolve(args.out ?? `data/reports/tool1/${dataset.source}-${dataset.selectedMonth}`);
-  assertNotDataSource(outDir);
+  assertOutputTarget(outDir, 'report');
   mkdirSync(outDir, { recursive: true });
   writeFileSync(resolve(outDir, 'index.html'), html, 'utf-8');
   writeFileSync(resolve(outDir, 'mismatch.csv'), csv, 'utf-8');
@@ -174,7 +161,7 @@ async function main(): Promise<void> {
     const input = buildDemoReport();
     const html = renderReport(input, { topN: args.top });
     const out = resolve(args.out ?? 'site/web/tool1-report.html');
-    assertNotDataSource(out);
+    assertOutputTarget(out, 'demo');
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, html, 'utf-8');
     process.stdout.write(`已生成 ${out}（${html.length} 字节，合成演示数据）\n`);

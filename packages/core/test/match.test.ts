@@ -84,6 +84,8 @@ describe('匹配内核 · 完全一致的画像', () => {
       assert.equal(dimensionOf(result, dimension).score, 100, `${dimension} 应为满分`);
     }
     assert.equal(dimensionOf(result, 'spending_power').score, 88);
+    assert.equal(result.priceFit?.bandId, '100-199');
+    assert.equal(result.priceFit?.penalty, 0);
 
     // (100×0.10 + 100×0.20 + 88×0.15 + 100×0.10 + 100×0.25 + 100×0.20) = 98.2
     assert.equal(result.totalScore, 98.2);
@@ -192,8 +194,50 @@ describe('匹配内核 · 客单承接', () => {
   test('中端价位且渠道高消费达标时不扣分', () => {
     const result = scoreMatch(input(portrait(), portrait(), 318.69));
     assert.equal(dimensionOf(result, 'spending_power').score, 92);
+    assert.equal(result.priceFit?.bandId, '200-399-matched');
     assert.equal(result.priceFit?.penalty, 0);
     assert.equal(result.totalScore, 98.8);
+  });
+
+  test('平价带无条件命中', () => {
+    const result = scoreMatch(input(portrait(), portrait(), 99));
+    assert.equal(dimensionOf(result, 'spending_power').score, 95);
+    assert.equal(result.priceFit?.bandId, 'under-100');
+    assert.equal(result.priceFit?.penalty, 0);
+  });
+
+  test('中端价位但渠道高消费不足时落兜底档并扣分', () => {
+    const result = scoreMatch(
+      input(portrait(), portrait({ spending_power: { 低: 0.2, 中: 0.7, 高: 0.1 } }), 318.69),
+    );
+    assert.equal(dimensionOf(result, 'spending_power').score, 70);
+    assert.equal(result.priceFit?.bandId, '200-399-fallback');
+    assert.equal(result.priceFit?.penalty, -3);
+  });
+
+  test('中高客单带：达标与不达标两条分支分别命中', () => {
+    const matched = scoreMatch(
+      input(portrait(), portrait({ spending_power: { 低: 0.2, 中: 0.4, 高: 0.4 } }), 450),
+    );
+    assert.equal(dimensionOf(matched, 'spending_power').score, 90);
+    assert.equal(matched.priceFit?.bandId, '400-499-matched');
+    assert.equal(matched.priceFit?.penalty, 0);
+
+    const fallback = scoreMatch(
+      input(portrait(), portrait({ spending_power: { 低: 0.7, 中: 0.2, 高: 0.1 } }), 450),
+    );
+    assert.equal(dimensionOf(fallback, 'spending_power').score, 58);
+    assert.equal(fallback.priceFit?.bandId, '400-499-fallback');
+    assert.equal(fallback.priceFit?.penalty, -6.5);
+  });
+
+  test('高客单但未达断层条件时落兜底档', () => {
+    const result = scoreMatch(
+      input(portrait(), portrait({ spending_power: { 低: 0.38, 中: 0.31, 高: 0.31 } }), 626.83),
+    );
+    assert.equal(dimensionOf(result, 'spending_power').score, 68);
+    assert.equal(result.priceFit?.bandId, '500-fallback');
+    assert.equal(result.priceFit?.penalty, -4);
   });
 
   test('高消费占比达标时高客单命中高档位', () => {
@@ -201,6 +245,7 @@ describe('匹配内核 · 客单承接', () => {
       input(portrait(), portrait({ spending_power: { 低: 0.29, 中: 0.31, 高: 0.4 } }), 626.83),
     );
     assert.equal(dimensionOf(result, 'spending_power').score, 93);
+    assert.equal(result.priceFit?.bandId, '500-matched');
     assert.equal(result.priceFit?.penalty, 0);
   });
 });
