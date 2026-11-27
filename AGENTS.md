@@ -55,3 +55,10 @@
 - 结果状态用 `PASS` / `FAIL` / `NOT_RUN` / `UNKNOWN` / `NOT_PROVED`，禁止把未运行或局部通过表述为整体通过
 
 详见[规范 §5](docs/engineering-workflow.md#5-独立复核与工程完成)与[§6](docs/engineering-workflow.md#6-git-与-ci-的精简节奏)。
+
+## 子代理路由
+
+- 实现任务交给 `SDD·TDD 实现者`，独立复核交给 `SDD·TDD 独立复核者`
+- 复核不得用内置 general-purpose / Explore 顶替独立复核者
+- 主 agent 只做规格起草、发单与验收：不代为实现，不自我复核
+- 子代理开工前先读本文件与工程规范；项目规则优先于子代理内置指令
