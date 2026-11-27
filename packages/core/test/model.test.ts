@@ -9,6 +9,7 @@ import {
   fitRidge,
   predictRidge,
   solveCholesky,
+  solveCholeskyFactorized,
   standardize,
 } from '../src/model/ridge.js';
 import * as metrics from '../src/model/metrics.js';
@@ -148,6 +149,28 @@ describe('Ridge：单一 Cholesky 求解器', () => {
     // 解：A·x = b → x = [3, 2]
     assert.ok(Math.abs(x[0]! - 3) < 1e-9, `x0=${x[0]}`);
     assert.ok(Math.abs(x[1]! - 2) < 1e-9, `x1=${x[1]}`);
+  });
+
+  test('solveCholeskyFactorized 与 solveCholesky 同解（可复用同一次分解）', () => {
+    const A = [
+      [4, 1],
+      [1, 3],
+    ];
+    const b = [1, 2];
+    const viaFactor = solveCholeskyFactorized(choleskyFactor(A), b);
+    const direct = solveCholesky(A, b);
+    assert.ok(Math.abs(viaFactor[0]! - direct[0]!) < 1e-12);
+    assert.ok(Math.abs(viaFactor[1]! - direct[1]!) < 1e-12);
+    // 残差检验：A·x = b
+    const residual = A[0]![0]! * viaFactor[0]! + A[0]![1]! * viaFactor[1]! - b[0]!;
+    assert.ok(Math.abs(residual) < 1e-12);
+  });
+
+  test('solveCholeskyFactorized 右端项维度不一致时明确失败', () => {
+    assert.throws(
+      () => solveCholeskyFactorized(choleskyFactor([[4, 1], [1, 3]]), [1]),
+      /维度与矩阵不一致/,
+    );
   });
 
   test('变异守卫：源码只保留 Cholesky 一条求解路径', () => {

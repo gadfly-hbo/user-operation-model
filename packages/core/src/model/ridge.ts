@@ -124,6 +124,34 @@ export function solveCholesky(A: number[][], b: number[]): number[] {
 }
 
 /**
+ * 用**已分解**的 Cholesky 因子求解 A·x = b（前代 + 回代）。
+ *
+ * 与 `solveCholesky(A, b)` 的区别：后者内部会先做一次 Cholesky 分解；
+ * 本函数接收 `choleskyFactor(A)` 的产物，在**多右端项**场景（同一设计矩阵的多个标签）
+ * 里可复用同一次分解，避免重复分解。求解口径与 `solveCholesky` 完全一致。
+ *
+ * @param L `choleskyFactor(A)` 的返回值（下三角）
+ * @param b 右端项
+ */
+export function solveCholeskyFactorized(L: number[][], b: number[]): number[] {
+  const n = L.length;
+  if (b.length !== n) throw new Error('solveCholeskyFactorized: 右端项维度与矩阵不一致');
+  const y: number[] = new Array<number>(n).fill(0);
+  for (let i = 0; i < n; i += 1) {
+    let sum = b[i]!;
+    for (let k = 0; k < i; k += 1) sum -= L[i]![k]! * y[k]!;
+    y[i] = sum / L[i]![i]!;
+  }
+  const x: number[] = new Array<number>(n).fill(0);
+  for (let i = n - 1; i >= 0; i -= 1) {
+    let sum = y[i]!;
+    for (let k = i + 1; k < n; k += 1) sum -= L[k]![i]! * x[k]!;
+    x[i] = sum / L[i]![i]!;
+  }
+  return x;
+}
+
+/**
  * 训练 Ridge：标准化 → 解 (ZᵀZ + αI)w = Zᵀ(y - ȳ)。
  *
  * @param X 训练矩阵（n × p）

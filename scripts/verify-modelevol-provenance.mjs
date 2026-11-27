@@ -12,9 +12,13 @@
  *      （独立工作树场景下即主仓根）；
  *   4. 回退：脚本所在仓根目录下的同名固化根。
  *
+ * 固化根（base root）是 `data/archive-modelevol/`，**各包在该根下的相对路径登记在溯源文档里**
+ * （例如 `v06-tmall-25q4/...`、`v04-holdout/...`）。P2-4 起新增 v0.4 包时，
+ * 固化根语义由「v06 单包目录」放宽为「归档固化总根」，物理目录位置不变。
+ *
  * 用法：
  *   node scripts/verify-modelevol-provenance.mjs
- *   node scripts/verify-modelevol-provenance.mjs --root /path/to/data/archive-modelevol/v06-tmall-25q4
+ *   node scripts/verify-modelevol-provenance.mjs --root /path/to/data/archive-modelevol
  *
  * 退出码：0 全部一致；1 存在不一致；2 校验前置条件缺失（文档/固化根不可读）。
  *
@@ -30,7 +34,7 @@ import { execFileSync } from 'node:child_process';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..');
 const DOC_PATH = join(REPO_ROOT, 'docs', 'modelevol-provenance.md');
-const FIXED_ROOT_RELATIVE = join('data', 'archive-modelevol', 'v06-tmall-25q4');
+const FIXED_ROOT_RELATIVE = join('data', 'archive-modelevol');
 
 /** 解析命令行参数。 */
 function parseArgs(argv) {
@@ -123,7 +127,7 @@ function parseDocPackages(markdown) {
       .map((cell) => cell.trim());
     if (cells.length < 7) continue;
     const id = cells[0].replace(/`/g, '');
-    if (!/^v06-[a-z0-9-]+$/.test(id)) continue;
+    if (!/^v0[46]-[a-z0-9-]+$/.test(id)) continue;
     rows.push({
       id,
       source: cells[1].replace(/`/g, ''),
