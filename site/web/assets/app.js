@@ -344,7 +344,7 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
           <p class="page-desc">六维加权评分 + 客单承接。点击任一格查看该组合的正负向证据与运营建议。</p>
         </div>
         <div class="page-actions">
-          <button class="btn">导出匹配报告</button>
+          <a class="btn" href="./tool1-report.html">打开工具1 报告（合成演示）</a>
         </div>
       </div>
 

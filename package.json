@@ -14,7 +14,9 @@
     "build": "tsc -b",
     "test": "node --test \"packages/*/dist/test/**/*.test.js\"",
     "check": "npm run build && npm run test",
-    "offline-check": "node --import ./scripts/offline-check/block-net.mjs scripts/offline-check/guard-selftest.mjs && node scripts/offline-check/offline-e2e.mjs"
+    "tool1": "node packages/tool1-channel-match/dist/src/bin.js",
+    "offline-check": "node --import ./scripts/offline-check/block-net.mjs scripts/offline-check/guard-selftest.mjs && node scripts/offline-check/offline-e2e.mjs && node scripts/offline-check/tool1-offline.mjs",
+    "test:golden": "node scripts/golden-tool1.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

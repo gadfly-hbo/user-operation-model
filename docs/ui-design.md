@@ -191,6 +191,15 @@ pls 的 `PortraitComparisonWorkbench` 提供了**骨架**（Baseline／Compariso
 
 已用 Playwright 验证：9 个页面渲染正常、控制台零错误、抽屉开合、转置与标签联动、420px 窄屏无横向溢出、亮暗主题层级一致。验证记录见 `openspec/changes/workbench-ui-site/result.md`。
 
+### 8.1 P1 工具1 货渠匹配报告页（生成物）
+
+`site/web/tool1-report.html` 是 P1 的**合成演示报告**，由工具1 的报告渲染器生成（不是手写页面）：
+匹配矩阵、错配清单、六维明细抽屉，与正式产物同一套渲染器与同一套匹配内核。
+
+- 入口：站点「货渠匹配」页右上角「打开工具1 报告（合成演示）」
+- 重新生成：`npm run build && npm run tool1 -- --demo --out site/web/tool1-report.html`
+- **只含合成数据**；真实数据版本由工具在本机生成，不进站点、不随站点发布
+
 旧版原型 `docs/ui-demo/` 保留作历史对照，不再维护。
 
 ---

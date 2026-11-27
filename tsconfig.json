@@ -6,6 +6,9 @@
     },
     {
       "path": "./packages/data-mcp"
+    },
+    {
+      "path": "./packages/tool1-channel-match"
     }
   ]
 }
