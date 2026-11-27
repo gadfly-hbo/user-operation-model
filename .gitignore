@@ -40,3 +40,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# 浏览器自动化临时产物
+.playwright-cli/

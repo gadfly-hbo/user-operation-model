@@ -30,6 +30,8 @@
 ├── AGENTS.md                    # 工程入口
 ├── docs/
 │   ├── 产品讨论稿-v0.1.md        # 产品方向、范围、架构决策
+│   ├── ui-design.md              # 工作台 UI 设计说明
+│   ├── ui-demo/                 # 可点击 UI 原型（静态单页）
 │   └── engineering-workflow.md  # 工程规范（流程唯一详细来源）
 ├── openspec/
 │   ├── README.md                # 变更记录机制
@@ -91,6 +93,17 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 ```
 
 stdio 传输、零网络请求、只读本地数据。17 个工具，其中 **9 个**已接入真实数据、**8 个**的数据源待补（返回明确错误并指明缺哪个文件；文件到位后自动可用，不用改代码）。详见 [docs/mcp-usage.md](docs/mcp-usage.md)。
+
+## UI Demo
+
+工作台形态的可点击原型（9 个页面，静态单页，无构建无依赖）：
+
+```bash
+python3 -m http.server 8899 --directory docs/ui-demo
+# http://127.0.0.1:8899/index.html
+```
+
+设计说明见 [docs/ui-design.md](docs/ui-design.md)。原型含**合成演示数据**，不含真实业务数据。
 
 ## 本地检查
 
