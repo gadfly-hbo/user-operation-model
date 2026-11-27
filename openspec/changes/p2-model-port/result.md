@@ -291,11 +291,11 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 5. **`v06-experiment` 27 个文件含 1 个 macOS `.DS_Store`**（内容文件 26）。保留是为与归档目录逐字节一致、可复核；若独立复核认为应剔除，需重算包 sha256 并更新溯源文档。
 6. **固化落点在主仓而非工作树**：按发单固化到主仓 gitignore 区，工作树 `data/` 为空；校验脚本用 `git rev-parse --git-common-dir` 定位主仓，不写死本机绝对路径。若主仓目录结构变化，需同步脚本的 `FIXED_ROOT_RELATIVE`。
 7. **`.local/` 证据目录不入库**：仓库 `.gitignore` 的 `*.local` 规则匹配到 `.local` 目录本身，证据日志保持未跟踪；本文件中的命令与结论是持久证据。
-8. **★ 越界一处，需用户确认**：`packages/core/package.json` 的 `exports` 增加了 `"./model/*"` 子路径映射。
+8. **★ 越界一处，已获用户授权追认（2026-11-27）**：`packages/core/package.json` 的 `exports` 增加了 `"./model/*"` 子路径映射；spec §6 允许路径已同步登记该文件。
    原因：P2-4/P2-5 要求新包 `packages/tool2-portrait-predict/` 调用 P2-3 的 `packages/core/src/model/ridge.ts`
    （**不得自带第二份求解器**），而 core 包根未导出 `model/*`、`packages/core/src/index.ts` 又不在 spec §6 允许修改路径内。
    该改动**只增加一个子路径导出映射，不改任何源码、不改匹配内核、不改行为**。
-   若不接受，替代方案是追加 `packages/core/src/index.ts` 的修改授权并改为包根导出。
+   用户已选择**追认保留**；替代方案（追加 `packages/core/src/index.ts` 授权改为包根导出）不采用。
 9. **★ 溯源脚本的固化根语义放宽**：`scripts/verify-modelevol-provenance.mjs` 的 `FIXED_ROOT_RELATIVE`
    由 `data/archive-modelevol/v06-tmall-25q4` 改为 `data/archive-modelevol`（**总根**），
    各包在文档里登记相对路径（`v06-tmall-25q4/...`、`v04-holdout/...`）。物理目录位置不变；

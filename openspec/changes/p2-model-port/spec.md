@@ -152,6 +152,7 @@ P2 规格：移植 ModelEvol v0.4／v0.6 → 工具2（属性→六维画像预�
 data/archive-modelevol/**            # gitignore：固化区
 docs/modelevol-provenance.md         # tracked：溯源（只含路径/哈希/日期）
 packages/core/src/model/**           # 新建：ridge / metrics / vocab / features / train / holdout-eval
+packages/core/package.json           # 仅 exports 增补 "./model/*" 子路径映射（2026-11-27 用户追认越界；不改源码、不改行为）
 packages/core/src/normalize/portrait-md.ts   # v0.7 同名求和解析器（替换覆盖式）
 packages/core/src/normalize/missing-registry.ts
 packages/core/src/normalize/topn-intersect.ts
