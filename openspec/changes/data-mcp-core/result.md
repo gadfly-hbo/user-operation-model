@@ -126,7 +126,7 @@
 | NUL 字节扫描 | 全仓库 `*.ts` / `*.json` / `*.md` | PASS，0 残留 |
 | 真实数据端到端 | 见下 | PASS |
 | MCP 真实 stdio 路径 | `packages/data-mcp/test/stdio.test.ts` | PASS，真实 spawn 子进程完成 initialize 与工具调用 |
-| 断网验证 | `npm run offline-check` | **PASS**，含两道门禁：① **守卫自检** —— 故意走 10 个出网入口（net.connect／createConnection／**Socket.prototype.connect**／http.request／get／dns.lookup／**promises.lookup／resolve**／**Resolver.resolve／lookup**）必须全部被拦截；② **端到端** —— 调全部 17 个工具：9 可用 / 8 data-not-ready / 0 意外，**出网尝试 0 次** |
+| 断网验证 | `npm run offline-check` | **PASS**，含两道门禁：① **守卫自检** —— 故意走 **13 个**出网入口（net.connect／createConnection／**Socket.prototype.connect**／http.request／get／dns.lookup／resolve／reverse／**promises.lookup／resolve／reverse**／**dns.Resolver.resolve**／**dns.promises.Resolver.resolve**），每个必须被拦截**且归因正确**（断言 `blockedEntry` 等于期望入口名，其它错误一律算失败）；② **端到端** —— 调全部 17 个工具：9 可用 / 8 data-not-ready / 0 意外，**出网尝试 0 次** |
 
 > **本文数字的复核方式**：本文引用的条数（链接数、用例数、索引规模）会随内容变动而漂移，**以命令输出为准**。改动后请重新执行并核对：
 >
