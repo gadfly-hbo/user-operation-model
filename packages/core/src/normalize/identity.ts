@@ -8,6 +8,34 @@ const PLATFORM_SUFFIXES = new Set([
 ]);
 
 /**
+ * 实体名末尾的噪声词。
+ *
+ * 平台画像的文件名常带「…画像数据」这类后缀（如
+ * `2507-2606_演示账号1画像数据_天猫.xlsx`），解析出的实体名需要剥掉这些词，
+ * 否则同一个实体在不同平台会得到不同的 entityId，无法关联。
+ */
+const ENTITY_NAME_NOISE = ['画像数据', '人群画像', '人群数据', '画像', '数据', '明细'];
+
+/** 剥离实体名末尾的噪声词。 */
+function stripEntityNoise(entityId: string): string {
+  // 先去掉按 '_' 分段的平台后缀（如「…_天猫」），再剥末尾噪声词
+  const segments = entityId.split('_').filter((part) => part !== '');
+  const kept = segments.filter((part) => !PLATFORM_SUFFIXES.has(part.toLowerCase()));
+  let result = (kept.length > 0 ? kept : segments).join('_');
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const noise of ENTITY_NAME_NOISE) {
+      if (result.endsWith(noise) && result.length > noise.length) {
+        result = result.slice(0, -noise.length);
+        changed = true;
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * 月份与实体标识的解析。
  *
  * 支持的月份写法：
@@ -76,8 +104,8 @@ export function parsePortraitEntityId(raw: string): { entityId: string; month?: 
     const month = parseMonthLabel(match[1]!);
     if (!month) continue;
     const rest = stripped.slice(match[1]!.length).replace(/^[_-]/, '');
-    if (rest !== '') return { entityId: rest, month };
-    return { entityId: stripped, month };
+    if (rest !== '') return { entityId: stripEntityNoise(rest), month };
+    return { entityId: stripEntityNoise(stripped), month };
   }
 
   // 只按下划线切分，避免把「2507-2606」这类月份区间拆开
@@ -96,15 +124,15 @@ export function parsePortraitEntityId(raw: string): { entityId: string; month?: 
     // 文件名中的月份段，如「透视分析_2507-2606_门店名_京东」
     const month = parseMonthLabel(segment);
     if (month && segments[i + 1]) {
-      return { entityId: segments[i + 1]!, month };
+      return { entityId: stripEntityNoise(segments[i + 1]!), month };
     }
     // 4 位年份段，如「2024_门店名_天猫」
     if (/^\d{4}$/.test(segment) && segments[i + 1]) {
-      return { entityId: segments[i + 1]!, month: `${segment}-01` };
+      return { entityId: stripEntityNoise(segments[i + 1]!), month: `${segment}-01` };
     }
   }
 
-  if (segments.length === 1) return { entityId: segments[0]! };
+  if (segments.length === 1) return { entityId: stripEntityNoise(segments[0]!) };
   return null;
 }
 

@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsc -b",
     "test": "node --test \"packages/*/dist/test/**/*.test.js\"",
-    "check": "npm run build && npm run test"
+    "check": "npm run build && npm run test",
+    "offline-check": "node --import ./scripts/offline-check/block-net.mjs scripts/offline-check/guard-selftest.mjs && node scripts/offline-check/offline-e2e.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

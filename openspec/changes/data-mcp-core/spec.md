@@ -12,7 +12,7 @@ P0 阶段规格：数据归一化层 + 数据 MCP
 交付 P0 阶段的两个产物，使讨论稿 §3 的「人-货-渠」统一数据契约可被调用：
 
 1. **数据归一化层** —— 把用户提供的原始导出文件转成统一画像索引与商品档案
-2. **数据 MCP** —— 以 stdio 暴露讨论稿 §3.3 的 16 个查询工具
+2. **数据 MCP** —— 以 stdio 暴露讨论稿 §3.3 的 17 个查询工具
 
 ### 本轮交付
 
@@ -67,7 +67,7 @@ P0 阶段规格：数据归一化层 + 数据 MCP
 | 标识 | 验收条目 |
 | --- | --- |
 | DM06 | MCP server 以 stdio 启动，**无网络监听**，可被 MCP 客户端连接并列出工具 |
-| DM07 | 工具清单与讨论稿 §3.3 的 16 个工具一致，参数与返回结构符合 §7 类型定义 |
+| DM07 | 工具清单与讨论稿 §3.3 的 **17** 个工具一致，参数与返回结构符合 §7 类型定义 |
 | DM08 | `get_product_portrait` 返回的标签占比与 TGI 与源文件逐项一致（抽样 ≥ 20 条记录核对） |
 | DM09 | `get_channel_portrait` 返回渠道画像及样本量、画像覆盖率 |
 | DM10 | `get_product_dossier` 返回单品的属性、FAB、画像、漏斗、经营指标 |
@@ -154,7 +154,7 @@ type Portrait = {
 
 - 归一化规则文档与实现
 - 统一维度集、类型定义、画像索引
-- 数据 MCP 的 16 个工具
+- 数据 MCP 的 17 个工具
 
 ### 本轮不做
 
@@ -174,15 +174,64 @@ type Portrait = {
 packages/core/src/portrait/**
 packages/core/src/product/**
 packages/core/src/normalize/**
-packages/data-mcp/**
+packages/core/src/index/**          # P0-5 索引与查询原语
+packages/data-mcp/**               # P0-5 MCP server
 fixtures/**
 docs/normalize-rules.md
+docs/mcp-usage.md                  # P0-5 使用说明
 package.json  package-lock.json  tsconfig.json
 openspec/changes/data-mcp-core/**
-.github/workflows/check.yml      # 仅在需要补充检查时
+.github/workflows/check.yml        # 仅在需要补充检查时
 ```
 
-**`packages/core` 中匹配评分相关目录不在本轮范围**，避免提前实现 P1 内容。
+**`packages/core` 中匹配评分相关目录不在本轮范围**，避免提前实现 P1 内容。`compare_product_channel` 只返回**差异**（Top3、距离、JS／cosine），**不产出匹配分与评级**——那是 P1 匹配内核的职责。
+
+## 6.1 P0-5 数据 MCP 专项（2026-11-26 用户授权开工）
+
+> **事实性更正（2026-11-26，独立复核指出）**：本节之前 DM07 与 §1／§5／§8 写「16 个工具」，而讨论稿 §3.3 实为 **17** 个。该处为**数量笔误**，非范围变更，故直接更正为 17；工具范围本身未变，仍是讨论稿 §3.3 的全量。
+
+### 工具清单：**17 个**（讨论稿 §3.3 全量）
+
+| 类别 | 工具 |
+| --- | --- |
+| 渠道 | `list_channels`、`get_channel_portrait` |
+| 品牌／竞品 | `get_brand_portrait`、`get_competitor_portrait` |
+| 商品 | `list_products`、`get_product_dossier`、`get_product_portrait`、`get_portrait_aggregate`、`get_funnel` |
+| 对比与检索 | `compare_product_channel`、`search_by_tag`、`search_similar_products` |
+| 会员与留存 | `list_member_features`、`get_retention_cohort`、`get_recency_distribution`、`get_channel_flow_matrix`、`get_diagnosis` |
+
+### 双层状态：接口就绪 ≠ 数据就绪
+
+每个工具的交付状态分两层，**分别报告，不合并表述**：
+
+| 层 | 含义 | 判定 |
+| --- | --- | --- |
+| **接口** | MCP 工具已注册、参数契约完整、返回结构确定 | 工具可在 MCP 客户端中被发现与调用 |
+| **数据** | 该工具所需的数据源已接入，能返回真实结果 | 数据在 `data/` 中存在且能被归一化层解析 |
+
+**数据未就位的工具**返回**明确错误**并说明缺什么数据源，**不返回空结果**——与 DM13 的口径一致（空结果与数据缺失必须可区分）。
+
+首版状态：**9 个工具数据就绪，8 个数据未就位**。数据是否就绪由**数据目录探测**决定（`packages/core/src/index/build.ts` 的 `DATA_SOURCE_PROBES`），文件到位后自动可用，不需要改代码。
+
+### 已知的数据未就位项
+
+| 工具 | 缺什么 |
+| --- | --- |
+| `get_brand_portrait` | 品牌人群画像（`01_品牌信息` 当前只有品牌清单，没有人群画像） |
+| `get_competitor_portrait` | 竞品人群画像（样例中无竞品画像文件） |
+| `get_funnel` | 生命周期漏斗（浏览／收藏／加购／购买／退货） |
+| `list_member_features` | 会员特征字典表 |
+| `get_retention_cohort` / `get_recency_distribution` / `get_channel_flow_matrix` / `get_diagnosis` | 留存与回购数据（需求三数据） |
+| `list_products` 的 `channel` 过滤 | **商品与渠道的关联关系**：现有数据源中商品表与渠道表无关联键，商品归属渠道需另提供 |
+| DM09 样本量与覆盖率 | **源数据未提供**：抖音／天猫／京东的画像导出均无样本量与画像覆盖率字段。工具保留 `sampleSize`／`coverage` 字段，数据源到位后即可填充 |
+| `get_portrait_aggregate` 的系列／爆款／IP 层级 | 聚合口径表；品类层级可由现有商品表字段聚合 |
+
+### 传输与依赖
+
+- **stdio** 传输，不监听任何端口
+- 依赖 `@modelcontextprotocol/sdk` **v1.x**（成熟稳定、客户端兼容性最好）；v2 已拆分包名为 `@modelcontextprotocol/server`，生态尚在形成，本轮不采用
+- 索引产物落在 `.local/`（已 gitignore），**数据目录只读**
+- 索引构建**不出网**，MCP 运行期**零网络请求**
 
 ## 7. 关键边界
 
@@ -209,7 +258,7 @@ openspec/changes/data-mcp-core/**
 | P0-2 | 统一维度集与类型定义 | `packages/core` 中类型与维度常量就位，单测覆盖 | DM02 | 否 |
 | P0-3 | 归一化规则文档 | `docs/normalize-rules.md` 完成，含缺失、冲突、聚合口径 | DM03–DM05 | 部分依赖 P0-1 |
 | P0-4 | 归一化实现 | 真实文件跑通，产出索引，抽样核对一致 | DM01, DM08 | 依赖 P0-1 |
-| P0-5 | MCP server 与 16 个工具 | stdio 可连接，工具清单与 §3.3 一致 | DM06, DM07, DM09–DM12 | 依赖 P0-2 |
+| P0-5 | MCP server 与 17 个工具 | stdio 可连接，工具清单与 §3.3 一致 | DM06, DM07, DM09–DM12 | 依赖 P0-2 |
 | P0-6 | 真实数据端到端验证 | 真实文件下逐项核对通过，错误路径可复现 | DM08, DM13 | 依赖 P0-4/5 |
 | P0-7 | 离线与数据守卫验证 | 断网跑通全流程；CI 无真实数据；守卫脚本通过 | DM14 | 否 |
 | P0-8 | 独立复核与交付 | 非作者复核完成，`result.md` 记录实际结果与未验证项 | — | 依赖 P0-6/7 |
