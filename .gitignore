@@ -44,5 +44,8 @@ venv/
 # 浏览器自动化临时产物
 .playwright-cli/
 
+# 浏览器截图产物：output/ 是跟踪路径，只允许「合成演示」截图入库（评审证据约定）。
+# 真实业务数据的截图必须落在仓库之外（如 /tmp），否则构成业务数据入库。
+
 # Qoder Sites 本机发布描述符（含 site/deployment ID，不入库）
 *.qoder.site

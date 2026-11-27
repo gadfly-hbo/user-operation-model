@@ -231,6 +231,7 @@ h1, h2, h3, p { margin: 0; }
   border-radius: var(--site-radius); cursor: pointer;
   font-size: var(--type-body); font-weight: 500; color: var(--ink);
   display: inline-flex; align-items: center; gap: 6px;
+  text-decoration: none;
   transition: background var(--motion), border-color var(--motion);
 }
 .btn:hover { background: var(--card-2); }

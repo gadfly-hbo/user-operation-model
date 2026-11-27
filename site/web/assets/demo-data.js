@@ -218,11 +218,16 @@ window.DEMO = (() => {
     advice: '分货：建议主推；投流：建议加投；熔断：不建议',
     risks: ['该渠道画像样本量偏小', '季节因子未纳入'],
   };
+  /**
+   * 合成演示矩阵的配色分档（只作用于本页的合成示意数据）。
+   * 正式匹配口径只在 packages/core 的 MATCH_CONFIG 里定义一处。
+   */
+  const demoBands = { a: 80, b: 60, fuse: 45 };
   const matchLegend = [
-    { grade: 'A', label: '建议主推 · ≥ 80', tone: 'strong' },
-    { grade: 'B', label: '建议微调 · 60–79.9', tone: 'mid' },
-    { grade: 'C', label: '慎选 · < 60', tone: 'weak' },
-    { grade: '熔断', label: '不建议 · < 45（C 级内）', tone: 'none' },
+    { grade: 'A', label: `示意分档 · 建议主推 · ≥ ${demoBands.a}`, tone: 'strong' },
+    { grade: 'B', label: `示意分档 · 建议微调 · ${demoBands.b}–${demoBands.a - 0.1}`, tone: 'mid' },
+    { grade: 'C', label: `示意分档 · 慎选 · ${demoBands.fuse}–${demoBands.b - 0.1}`, tone: 'weak' },
+    { grade: '熔断', label: `示意分档 · 不建议 · < ${demoBands.fuse}（C 级内）`, tone: 'none' },
   ];
 
   /* ── 新品预测（工具 2） ─────────────────────────────────── */
@@ -400,7 +405,7 @@ window.DEMO = (() => {
   ];
 
   return {
-    reviewBatch, matchChannels, matchProducts, matchMatrix, matchDetail, matchLegend,
+    reviewBatch, matchChannels, matchProducts, matchMatrix, matchDetail, matchLegend, demoBands,
     predict, channelProfiles, productProfiles, tagIndex, tagHits,
     datasource, retention, flywheel,
   };

@@ -14,3 +14,21 @@ export * from './index/types.js';
 export * from './index/build.js';
 export * from './index/query.js';
 export * from './index/similarity.js';
+
+export * from './match/types.js';
+export {
+  MATCH_CONFIG,
+  DISTRIBUTION_DIMENSIONS,
+  validateMatchConfig,
+  loadMatchConfig,
+} from './match/config.js';
+export type {
+  MatchConfig,
+  PriceBandRule,
+  PriceCondition,
+  PriceConditionField,
+  PriceConditionOp,
+} from './match/config.js';
+export { scoreMatch } from './match/kernel.js';
+export { parsePortraitWindow, isIntervalWindow, coversMonth } from './match/month.js';
+export type { PortraitWindow } from './match/month.js';

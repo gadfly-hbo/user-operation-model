@@ -293,10 +293,16 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
   }
 
   /* ── 页面：货渠匹配 ───────────────────────────────────────── */
+  /**
+   * 合成演示矩阵的配色分档（来自 demo-data.js）。
+   * 仅用于本页的**合成示意数据**；正式匹配口径（评级门槛、熔断阈值、权重）只在
+   * packages/core 的 MATCH_CONFIG 里定义一处，工具1 报告页按该配置渲染。
+   */
+  const DEMO_BANDS = D.demoBands;
   function heatGrade(v) {
-    if (v >= 80) return 'a';
-    if (v >= 60) return 'b';
-    if (v >= 45) return 'c';
+    if (v >= DEMO_BANDS.a) return 'a';
+    if (v >= DEMO_BANDS.b) return 'b';
+    if (v >= DEMO_BANDS.fuse) return 'c';
     return 'x';
   }
 
@@ -344,15 +350,15 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
           <p class="page-desc">六维加权评分 + 客单承接。点击任一格查看该组合的正负向证据与运营建议。</p>
         </div>
         <div class="page-actions">
-          <button class="btn">导出匹配报告</button>
+          <a class="btn" href="./tool1-report.html">打开工具1 报告（合成演示）</a>
         </div>
       </div>
 
       ${ledger([
       { label: '候选商品', value: pr.length, note: '款号级' },
       { label: '候选渠道', value: ch.length, note: '8 类渠道实体' },
-      { label: '高匹配格', value: flat.filter((v) => v >= 80).length, tone: 'high', note: '≥ 80 分，建议主推' },
-      { label: '熔断格', value: flat.filter((v) => v < 45).length, tone: 'low', note: '< 45 分，不建议' },
+      { label: '高匹配格', value: flat.filter((v) => v >= DEMO_BANDS.a).length, tone: 'high', note: `≥ ${DEMO_BANDS.a} 分，建议主推` },
+      { label: '熔断格', value: flat.filter((v) => v < DEMO_BANDS.fuse).length, tone: 'low', note: `< ${DEMO_BANDS.fuse} 分，不建议` },
     ])}
 
       <div class="tools">
@@ -387,12 +393,9 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
 
       <details class="tech">
         <summary>评分口径与维度权重</summary>
-        <div class="tech__body">口径出处：产品讨论稿 §7.4（工具 1／工具 2 共用匹配内核）。
-单维度分 = 0.60 × JS 相似度 + 0.25 × 余弦相似度 + 0.15 × Top3 重合度；缺维度时对有效维度重归一化。
-综合分 = Σ(维度分 × 权重) / Σ权重 + 客单惩罚，裁剪到 [25, 99.5]。
-权重（初值，待真实数据校准）：性别 0.10 · 年龄段 0.20 · 消费能力 0.15 · 城市等级 0.10 · 策略人群 0.25 · 人生阶段 0.20。
-评级：A ≥ 80，B 60–79.9，C &lt; 60；C 级内 &lt; 45 分触发熔断（不建议投放）。
-界面数值为合成示意；正式口径以 packages/core 配置为准。</div>
+        <div class="tech__body">正式评分口径只在 packages/core 的 MATCH_CONFIG 里定义一处（版本 p1-2026-11-uncalibrated），本页不复制公式、权重与阈值。
+口径出处：产品讨论稿 §7.4（工具 1／工具 2 共用匹配内核）；逐条口径与权重见「工具1 报告」页底部的「评分口径与维度权重」折叠区，以及 docs/match-kernel.md。
+本页数值全部为合成演示数据，不反映真实匹配结果；正式口径下权重为初值、未经真实数据校准，记「已调整」，不得称「已优化」。</div>
       </details>
     </div>`;
   }
@@ -1004,8 +1007,8 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
         const p = D.matchProducts.find((x) => x.id === cell.dataset.p);
         const c = D.matchChannels.find((x) => x.id === cell.dataset.c);
         const v = Number(cell.dataset.v);
-        const grade = v >= 80 ? 'A 级 · 建议主推' : v >= 60 ? 'B 级 · 建议微调' : v >= 45 ? 'C 级 · 慎选' : 'C 级 · 熔断不建议';
-        const tone = v >= 80 ? 'success' : v >= 60 ? 'info' : v >= 45 ? 'warning' : 'danger';
+        const grade = v >= DEMO_BANDS.a ? 'A 级 · 建议主推' : v >= DEMO_BANDS.b ? 'B 级 · 建议微调' : v >= DEMO_BANDS.fuse ? 'C 级 · 慎选' : 'C 级 · 熔断不建议';
+        const tone = v >= DEMO_BANDS.a ? 'success' : v >= DEMO_BANDS.b ? 'info' : v >= DEMO_BANDS.fuse ? 'warning' : 'danger';
         openDrawer(
           `${p.name} × ${c.name}`,
           `<div class="hint">匹配分</div>
