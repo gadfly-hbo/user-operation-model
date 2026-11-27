@@ -43,3 +43,6 @@ venv/
 
 # 浏览器自动化临时产物
 .playwright-cli/
+
+# Qoder Sites 本机发布描述符（含 site/deployment ID，不入库）
+*.qoder.site

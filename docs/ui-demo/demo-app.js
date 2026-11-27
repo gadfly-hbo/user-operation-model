@@ -444,7 +444,7 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
         <select class="input input--sm" aria-label="渠道类型"><option>全部类型</option><option>抖音直播</option><option>天猫</option><option>实体店</option></select>
         <select class="input input--sm" aria-label="月份"><option>2026-10</option><option>2026-09</option></select>
         <div class="toolbar__spacer"></div>
-        <span class="hint">当前索引 200 个渠道，其中 4 个有画像</span>
+        <span class="hint">当前索引 168 个渠道，其中 4 个有画像</span>
       </div>
       <div class="table-wrap">
         <table class="data">
@@ -482,7 +482,7 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
         <input class="input input--sm" placeholder="搜索款号或商品名" aria-label="搜索商品" />
         <select class="input input--sm" aria-label="品类"><option>全部品类</option><option>短袖 T 恤</option><option>羽绒服</option></select>
         <div class="toolbar__spacer"></div>
-        <span class="hint">索引 334 款；1 款有单品画像</span>
+        <span class="hint">索引 246 款；单品画像覆盖少量款</span>
       </div>
       <div class="table-wrap">
         <table class="data">

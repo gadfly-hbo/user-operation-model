@@ -387,9 +387,12 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
 
       <details class="tech">
         <summary>评分口径与维度权重</summary>
-        <div class="tech__body">性别 0.15 · 年龄 0.20 · 策略人群 0.25 · 客单承接 0.15 · 城市等级 0.15 · 品类共振 0.15（权重可配置）
-客单承接：价格带与渠道高/低消费占比交叉判断，不足时按幅度扣分。
-评级：A ≥ 80，B 60–79.9，C &lt; 60。</div>
+        <div class="tech__body">口径出处：产品讨论稿 §7.4（工具 1／工具 2 共用匹配内核）。
+单维度分 = 0.60 × JS 相似度 + 0.25 × 余弦相似度 + 0.15 × Top3 重合度；缺维度时对有效维度重归一化。
+综合分 = Σ(维度分 × 权重) / Σ权重 + 客单惩罚，裁剪到 [25, 99.5]。
+权重（初值，待真实数据校准）：性别 0.10 · 年龄段 0.20 · 消费能力 0.15 · 城市等级 0.10 · 策略人群 0.25 · 人生阶段 0.20。
+评级：A ≥ 80，B 60–79.9，C &lt; 60；C 级内 &lt; 45 分触发熔断（不建议投放）。
+界面数值为合成示意；正式口径以 packages/core 配置为准。</div>
       </details>
     </div>`;
   }
@@ -512,6 +515,7 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
 
   /* ── 页面：画像库 ─────────────────────────────────────────── */
   function pageChannelProfile() {
+    const total = D.channelProfiles.length;
     return `
     <div class="page is-active">
       <div class="page-head">
@@ -522,12 +526,18 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
         </div>
         <div class="page-actions"><button class="btn btn--primary">批量货渠匹配分析</button></div>
       </div>
+      ${ledger([
+      { label: '索引渠道', value: 168, note: '全部渠道实体' },
+      { label: '有画像', value: total, tone: 'accent', note: '可参与匹配' },
+      { label: '最高覆盖率', value: (Math.max(...D.channelProfiles.map((c) => c.coverage)) * 100).toFixed(0), unit: '%', tone: 'high', note: '归一后可比较' },
+      { label: '数据月份', value: '2026-10', small: true, tone: 'mid', note: '部分渠道为 09' },
+    ])}
       <div class="tools">
         <input class="input" placeholder="搜索渠道名或编码" aria-label="搜索渠道" />
         <select class="input" aria-label="渠道类型"><option>全部类型</option><option>抖音直播</option><option>天猫</option><option>实体店</option></select>
         <select class="input" aria-label="月份"><option>2026-10</option><option>2026-09</option></select>
         <div class="tools__spacer"></div>
-        <span class="tools__hint">当前索引 168 个渠道，其中 4 个有画像</span>
+        <span class="tools__hint">当前索引 168 个渠道，其中 ${total} 个有画像</span>
       </div>
       <div class="table-wrap">
         <table class="data">
@@ -545,11 +555,12 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
           </tbody>
         </table>
       </div>
-      <div class="empty">其余 164 个渠道暂无人群画像数据</div>
+      <div class="empty">其余 ${168 - total} 个渠道暂无人群画像数据</div>
     </div>`;
   }
 
   function pageProductProfile() {
+    const total = D.productProfiles.length;
     return `
     <div class="page is-active">
       <div class="page-head">
@@ -560,11 +571,17 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
         </div>
         <div class="page-actions"><button class="btn">导入商品属性表</button></div>
       </div>
+      ${ledger([
+      { label: '索引商品', value: 246, note: '款号级' },
+      { label: '有单品画像', value: total, tone: 'accent', note: '可参与匹配' },
+      { label: '最高覆盖率', value: (Math.max(...D.productProfiles.map((p) => p.coverage)) * 100).toFixed(0), unit: '%', tone: 'high', note: '归一后可比较' },
+      { label: '相似款检索', value: '可用', small: true, tone: 'mid', note: '基于属性与画像' },
+    ])}
       <div class="tools">
         <input class="input" placeholder="搜索款号或商品名" aria-label="搜索商品" />
         <select class="input" aria-label="品类"><option>全部品类</option><option>短袖 T 恤</option><option>羽绒服</option></select>
         <div class="tools__spacer"></div>
-        <span class="tools__hint">索引 246 款；单品画像仅部分就绪</span>
+        <span class="tools__hint">索引 246 款；${total} 款有单品画像</span>
       </div>
       <div class="table-wrap">
         <table class="data">
@@ -987,7 +1004,7 @@ JS 散度距离（0–1）与 Top3 重合度并列呈现。
         const p = D.matchProducts.find((x) => x.id === cell.dataset.p);
         const c = D.matchChannels.find((x) => x.id === cell.dataset.c);
         const v = Number(cell.dataset.v);
-        const grade = v >= 80 ? 'A 级 · 建议主推' : v >= 60 ? 'B 级 · 建议微调' : v >= 45 ? 'C 级 · 慎选' : 'D 级 · 熔断';
+        const grade = v >= 80 ? 'A 级 · 建议主推' : v >= 60 ? 'B 级 · 建议微调' : v >= 45 ? 'C 级 · 慎选' : 'C 级 · 熔断不建议';
         const tone = v >= 80 ? 'success' : v >= 60 ? 'info' : v >= 45 ? 'warning' : 'danger';
         openDrawer(
           `${p.name} × ${c.name}`,

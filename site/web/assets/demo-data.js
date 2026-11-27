@@ -219,10 +219,10 @@ window.DEMO = (() => {
     risks: ['该渠道画像样本量偏小', '季节因子未纳入'],
   };
   const matchLegend = [
-    { grade: 'A', label: '建议主推', min: 80, tone: 'strong' },
-    { grade: 'B', label: '建议微调', min: 60, tone: 'mid' },
-    { grade: 'C', label: '慎选', min: 45, tone: 'weak' },
-    { grade: 'D', label: '熔断', min: 0, tone: 'none' },
+    { grade: 'A', label: '建议主推 · ≥ 80', tone: 'strong' },
+    { grade: 'B', label: '建议微调 · 60–79.9', tone: 'mid' },
+    { grade: 'C', label: '慎选 · < 60', tone: 'weak' },
+    { grade: '熔断', label: '不建议 · < 45（C 级内）', tone: 'none' },
   ];
 
   /* ── 新品预测（工具 2） ─────────────────────────────────── */
@@ -273,7 +273,9 @@ window.DEMO = (() => {
   /* ── 渠道画像库 ─────────────────────────────────────────── */
   const channelProfiles = [
     { id: 'CH01', name: '演示直播 A', type: '抖音直播', platform: '抖音', month: '2026-10', coverage: 0.94, sample: 9640, top: ['男 62%', '25–34', '都市蓝领'] },
+    { id: 'CH02', name: '演示直播 B', type: '抖音直播', platform: '抖音', month: '2026-10', coverage: 0.87, sample: 5310, top: ['女 57%', '18–28', 'Z世代'] },
     { id: 'CH04', name: '演示天猫旗舰店', type: '天猫', platform: '天猫', month: '2026-10', coverage: 0.91, sample: 32640, top: ['女 71%', '25–34', '都市中产'] },
+    { id: 'CH05', name: '演示京东店', type: '京东', platform: '京东', month: '2026-10', coverage: 0.84, sample: 18920, top: ['男 66%', '30–40', '资深白领'] },
     { id: 'CH06', name: '演示线下店 A', type: '实体店', platform: '实体店', month: '2026-09', coverage: 0.88, sample: 6180, top: ['女 68%', '35–49', '小镇中年'] },
     { id: 'CH08', name: '演示特卖渠道', type: '唯品会', platform: '唯品会', month: '2026-10', coverage: 0.71, sample: 15720, top: ['女 64%', '35–49', '小镇中年'] },
   ];
