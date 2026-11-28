@@ -103,7 +103,7 @@ openspec/changes/data-templates/**
 | 检查 | 方式 | 期望 |
 | --- | --- | --- |
 | 防漂移 | `npm run check` 内 | GREEN；改动 catalog 不重建模板即 FAIL |
-| 模板可用 | 业务侧视角：每 sheet 另存 CSV 后被解析器识别（合成示例行跑一遍解析） | 解析通过或按预期报「示例行」类错误 |
+| 模板可用 | 由 **DT7 往返测试**覆盖（§5）：删示例行、按表目录另存后必须被真实解析器识别；抖音画像的实体／月份来自列名，测试须断言改列名后归属随之变化 | 17 张数据 sheet 全部识别，0 静默错挂 |
 | 数据守卫 | `check-data-guard.py` | 显式白名单只放行模板文件 |
 | 归档内容 | `check:archive-content` | 0 命中 |
 | 依赖 | `npm audit --audit-level=high` | 0 漏洞 |
