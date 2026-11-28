@@ -1,7 +1,7 @@
 # P2-Model-Port 结果记录
 
 > 规格：[spec.md](spec.md)（状态：已确认，2026-11-27；D-P2-1 = 方案 A）
-> 累计实际范围：**P2-2（固化与溯源）**、**P2-3（模型公共库）**、**P2-4（v0.4 管线移植 + 忠实门）**、**P2-5（§9.2 合规特征集 + 合规基线）**、**P2-6（v0.6 六阶段移植）**、**P2-7（模型导出器 + 黄金测试）**、**P2-8（model-mlflow 登记，Staging）**。P2-11 起未开工。
+> 累计实际范围：**P2-2（固化与溯源）**、**P2-3（模型公共库）**、**P2-4（v0.4 管线移植 + 忠实门）**、**P2-5（§9.2 合规特征集 + 合规基线）**、**P2-6（v0.6 六阶段移植）**、**P2-7（模型导出器 + 黄金测试）**、**P2-8（model-mlflow 登记，Staging）**。P2-11 四轮独立复核已完成（第四轮 PASS）；P2-12／P2-13 未开工。
 > 执行分支：`work/p2-model-port`（独立工作树 `/tmp/uom-wt-p2`）。
 > 原始日志：本工作树 `.local/p2/`（该目录被 `.gitignore` 的 `*.local` 规则忽略，不入库）。
 > **证据丢失说明（2026-11-28）**：本工作树曾被 /tmp 清理删除后由主 agent 重建——git 提交完好，
@@ -29,8 +29,8 @@
 | P2-7 | 导出器 + 黄金测试 | **PASS** | M09 | 见 §11 |
 | P2-8 | model-mlflow 登记（Staging） | **PASS**（v1/v2 均 Staging；门槛未过如实入账，不得晋级） | M10 | 见 §12 |
 | P2-9 | 文档与 result | **PASS**（本轮交付物齐全：本文件 + 溯源文档 + 基线文档 + 门槛结论入档 + 复核修单章 §14；复核 S8 状态词已改用标准词汇） | — | 后续文档维护随修复轮进行 |
-| P2-10 | 全量检查 | 见 §7（前四轮 + **第五轮·复核修单** §7.3；断网自检 NOT_RUN，原因见 §7／§13.4） | M11 / M13 | 见 §7／§13.4 |
-| P2-11 | 独立复核 | **第一轮 FAIL → 修单（§14）→ 第二轮 PASS**（两轮均由未参与候选的 `SDD·TDD 独立复核者` 完成：第一轮结论 FAIL（阻断 B1–B4），报告 [review-p2.md](review-p2.md)；修单后第二轮结论 **PASS、无阻断、建议进 PR**，报告 [review-p2-round2.md](review-p2-round2.md)，其应修 R2-S1／R2-S2 与建议项处置见 §15。复核结论以复核者报告为准，不因本表自述而改变） | — | [review-p2-round2.md](review-p2-round2.md) |
+| P2-10 | 全量检查 | 见 §7（含各复核修单轮的检查记录；断网自检 NOT_RUN，原因见 §7／§13.4） | M11 / M13 | 见 §7／§13.4 |
+| P2-11 | 独立复核 | **四轮完成：第一轮 FAIL → 修单 §14 → 第二轮 PASS（应修 2）→ 修单 §15 → 第三轮 FAIL（阻断 B-1 文档断链，已随 `568777e` 关闭；应修 R3-S1／S2／S3）→ 修单 §15.5 → 第四轮 PASS、无阻断、建议进 PR**（四轮均由未参与候选的 `SDD·TDD 独立复核者` 完成；复核结论以复核者报告为准，不因本表自述而改变） | — | [review-p2.md](review-p2.md)、[review-p2-round2.md](review-p2-round2.md)、[review-p2-round3.md](review-p2-round3.md)、[review-p2-round4.md](review-p2-round4.md) |
 | P2-12 | PR / CI / squash 合并 | **NOT_RUN** | — | 本轮不 push、不开 PR |
 | P2-13 | 用户数据到位后生产重训 | **NOT_RUN** | M07 | 等 P0 数据 |
 
@@ -939,3 +939,24 @@ npm test                    # 含黄金用例与字节一致用例（合成夹�
 2. **独立复核者重验受影响范围**（工程规范 §5.1）：R3-S1／R3-S2 新守卫与变异重放、R3-S1 行为层沙箱用例、R3-A1 导出顺序与 `cleanDirectoryFirst`、V1–V12 清单单一来源、R3-A4 死变量。
 3. **R3-A2／R3-A5／R3-A6 余项与「脚本复用 `assertStage06ChecksRegistrable`」**：本单记录不修，是否立项由主 agent／用户决定。
 4. 断网 e2e、黄金 G1–G5、CI、PR（P2-12）、真实数据重训（P2-13）：**NOT_RUN**（与 §7.4 口径一致）。
+
+---
+
+## 16. 专项最终检查（工程规范 §5.3）
+
+**检查范围**：本变更 P2-1～P2-10 及其受影响接缝——`packages/core/src/model/**`、`packages/core/src/normalize/portrait-md.ts`、`packages/tool2-portrait-predict/**`、`scripts/{v06-pipeline,fidelity-v04,register-model-mlflow,verify-modelevol-provenance}.mjs`、模型包与登记链路、相关文档。不据此宣称未检查的既有实现已合规。
+**候选身份**：分支 `work/p2-model-port` @ `c287587`；基线本地 `main` @ `42de110`；相对 main 差异 52 个文件。
+**检查者**：主 agent（规格起草与验收角色，**未参与本候选任何实现**；实现由 `SDD·TDD 实现者` 完成；独立复核由 `SDD·TDD 独立复核者` 三轮完成，见 [review-p2.md](review-p2.md)、[review-p2-round2.md](review-p2-round2.md)、[review-p2-round3.md](review-p2-round3.md)、[review-p2-round4.md](review-p2-round4.md)）。
+
+| 检查项 | 实际核对与证据位置 | 结论 |
+| --- | --- | --- |
+| 四点原则 | **Host 管环境**：六阶段管线、校验、导出、登记都是 npm 脚本入口；MLflow server 只绑 `127.0.0.1:5021`、用后即停；模型包只落本地 `models/`（gitignore）。**Agent 自主执行**：阶段 01–06 与 V1–V12 自动运行并 fail-closed，无逐步人工审批；登记由 Agent 一次性完成。**复用第三方**：移植 ModelEvol v0.4／v0.6 并留来源标识与校验（`docs/modelevol-provenance.md`、`scripts/verify-modelevol-provenance.mjs`）；model-mlflow 只消费其既有登记入口、代码本体零改动（其 git 工作树干净）；零新增第三方依赖（lock 仅新增 workspace 包链接）、未引入 xlsx、XLSX 走既有 exceljs。**减少人的操作**：预测只需 `import { predict }`，无服务、无配置；无新增必做人工动作 | **通过** |
+| 数据不出网（§7） | 禁区零改动（`core/src/match/**`、`tool1-channel-match/**`、`data-mcp/**`、`site/web/**`）；管线与核心库无出网调用（grep `fetch(`/`node:http`/`undici`/`axios` 为空）；登记脚本只访问回环地址且 `url-guard` 拒绝非回环；第一轮复核 B1（真实商品记录进 tracked 测试）已修，新增 `check:archive-content` 守卫（黑名单运行时取自固化区、不入库，177 文件 0 命中）；固化区 gitignore、守卫与真实数据不进 CI；文档只含路径／哈希／日期／款号标识（S7 口径，工程规范 §7.1） | **通过** |
+| 匹配内核唯一性（§9.1） | `packages/core/src/match/**` 零改动，无第二份评分逻辑；tool2 侧 Ridge／指标为单一实现并有结构守卫（S6）。本轮黄金回归 G1–G5 **NOT_RUN**（内核未改，沿用 P1 证据；无 `UOM_REFERENCE_ROOT`） | **通过（黄金 NOT_RUN）** |
+| 背对背隔离（§9.2） | 类型层编译期断言 + 投影层白名单 + 行为层有/无对比 + 特征名归属白名单；三轮复核变异：显式 `.fab`、方括号、join 拼键＋存在指示等 **KILLED**；`productAttribute` 经用户 2026-11-28 裁定追认为客观属性并锁死三值。**已知盲区**：「解构＋内容条件」形态三层均不命中（O5，生产数据流不可达），记 **NOT_PROVED**，加固留待另立变更 | **通过（含一项已记录盲区）** |
+| 模型来源与版本（§8） | 溯源校验 5 包 PASS；归档 11-26 后零内容改动（仅 `.DS_Store` 被 Finder 触碰）；不继承 v0.7 结论（spec §7 清单，复核逐条核对）；归档 LOO 回代错误未复刻；冻结值钉死：folds `2ca273cb…`、系数区 `79669a0f…`、忠实门 `0.6957/0.9155/0.0825`、合规基线 `0.7754/0.9300/0.0759`；模型包 `formatVersion 1`、`data_sha256` 宿主计算、Stage 以 Registry 为准（v1／v2 均 Staging，门槛 `FAIL_NOT_POSITIVE` 如实入账，无 Production） | **通过** |
+| 人的操作 | 正常预测零人工；登记门 fail-closed（校验非 PASS 不导出、不登记）；唯一外部依赖是业务侧供数（P2-13 真实数据重训，`docs/data-request.md` 已写明要什么、解锁什么） | **通过** |
+
+**发现的问题**：① 第三轮复核判 **FAIL**——阻断 1（复核报告未入库致干净检出断链）已随 `568777e` 关闭；应修 R3-S1（B2 守卫只锁使用点）、R3-S2（登记入口守卫可整体删除）、R3-S3（R2-A2／A6 无处置记录）已由 `fc55ddb`／`f390894` 修复，复核者的三种绕过重放均 KILLED（见 [review-p2-round3.md](review-p2-round3.md) 与 §15 第三轮应修处置）。**更正**：本节初稿曾在第三轮出结果前写「无阻断」，属过早结论，已按实际结果改写。② 第四轮范围复核（仅重验 R3-S1／R3-S2 及回归）结论见 [review-p2-round4.md](review-p2-round4.md)。③ 断网 e2e、黄金 G1–G5、CI、P2-13 **NOT_RUN**；④ O5 盲区 **NOT_PROVED**；⑤ 导出器新增 `validationChecks` 后本地再生包与已登记 v2 的 manifest 字节不同（`predict.mjs` 一致），是否补登记 v3 待用户定。
+
+**结论**：**通过（限 P2-1～P2-10 范围）**，**以第四轮复核不判 FAIL 为前提**；若其判 FAIL，本结论作废并回到修复循环。本节不代替阶段门禁、CI 与产品验收；因存在上述 NOT_RUN／NOT_PROVED 项与 P2-12／P2-13 未做，**不宣称本变更整体交付完成**。
