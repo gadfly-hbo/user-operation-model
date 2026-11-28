@@ -27,6 +27,7 @@ import {
   type V06GateConclusionInput,
   type V06ModelPackageInput,
 } from '../src/export/model-package.js';
+import { STAGE06_CHECK_IDS } from '../src/register/validation-gate.js';
 import { trainV06FinalModel } from '../src/pipeline/v06/04-select-final.js';
 import { V06_TARGET_DIMENSIONS, type V06Sample } from '../src/pipeline/v06/lib/types.js';
 
@@ -86,7 +87,7 @@ function syntheticSamples(): V06Sample[] {
         category: '外套',
         subcategory: '棉外套',
         season: 'Q4',
-        productAttribute: '新品',
+        productAttribute: '电商一年期',
         ipCollab: '',
         specialFunctionMaterial: '',
       },
@@ -138,12 +139,8 @@ function gateConclusionFixture(): V06GateConclusionInput {
     },
     /** 宏平均 JS 提升 */
     macroJsLift: 0.0096,
-    /** 阶段 06 fail-closed 校验结论（gate5 由这组判定） */
-    validationChecks: [
-      { id: 'V1', result: 'pass' },
-      { id: 'V9', result: 'pass' },
-      { id: 'V12', result: 'pass' },
-    ],
+    /** 阶段 06 fail-closed 校验结论（gate5 由这组判定；V1–V12 齐全且全 PASS 才可导出） */
+    validationChecks: STAGE06_CHECK_IDS.map((id) => ({ id, result: 'pass' as const })),
     /** 冻结 folds 文件 sha256（合成值） */
     frozenFoldsSha256: 'b'.repeat(64),
     /** 确定性系数区 sha256（合成值） */
@@ -224,7 +221,7 @@ describe('黄金测试：固定输入行 → 精确期望分布', () => {
         category: '外套',
         subcategory: '棉外套',
         season: 'Q4',
-        productAttribute: '新品',
+        productAttribute: '电商一年期',
         ipCollab: '',
         specialFunctionMaterial: '',
       },
@@ -256,7 +253,7 @@ describe('黄金测试：固定输入行 → 精确期望分布', () => {
         category: '外套',
         subcategory: '棉外套',
         season: 'Q4',
-        productAttribute: '新品',
+        productAttribute: '电商一年期',
         ipCollab: '',
         specialFunctionMaterial: '',
       },
@@ -323,7 +320,7 @@ describe('导出包与管线口径一致', () => {
         category: '外套',
         subcategory: '棉外套',
         season: 'Q4',
-        productAttribute: '新品',
+        productAttribute: '电商一年期',
         ipCollab: '',
         specialFunctionMaterial: '',
       },
@@ -366,9 +363,11 @@ describe('门槛结论：manifest 由管线实际结果生成', () => {
       gate5_frozen_inputs_and_fail_closed: 'PASS',
     });
     assert.ok(
-      gates.gate5DeterminedBy.includes('3/3 pass'),
+      gates.gate5DeterminedBy.includes('12/12 pass'),
       `gate5 判定依据应含通过计数，实际：${gates.gate5DeterminedBy}`,
     );
+    // R2-S1：manifest 必须自带阶段 06 校验记录（登记脚本据它核验，不采信调用方传参）
+    assert.deepEqual(gates.validationChecks, gateConclusionFixture().validationChecks);
     assert.equal(gates.frozenFoldsSha256, 'b'.repeat(64));
     assert.equal(gates.coefficientRegionSha256, 'c'.repeat(64));
     assert.equal(gates.stageCeiling, 'Staging');
@@ -396,21 +395,53 @@ describe('门槛结论：manifest 由管线实际结果生成', () => {
     assert.throws(() => buildV06ModelPackage(partial), /gate2/);
   });
 
-  test('gate5 由阶段 06 校验判定：任一校验 fail 即 FAIL，校验缺失即失败', () => {
-    const withFail = {
+  test('R2-S1：阶段 06 任一校验 fail → 不得导出可登记模型包（fail-closed）', () => {
+    // 旧实现把失败校验如实写进 manifest.gate5 后照常导出——失败包因此可被登记。
+    // 修正后：校验有 FAIL 即抛错，不产出任何「带 stage 的可登记包」。
+    for (const failing of ['V4', 'V9', 'V12']) {
+      const withFail = {
+        ...BASE_INPUT,
+        gateConclusion: {
+          ...gateConclusionFixture(),
+          validationChecks: gateConclusionFixture().validationChecks.map((record) =>
+            record.id === failing ? { ...record, result: 'fail' as const } : record,
+          ),
+        },
+      };
+      assert.throws(
+        () => buildV06ModelPackage(withFail),
+        new RegExp(failing),
+        `${failing} 为 fail 时必须拒绝导出可登记包`,
+      );
+    }
+  });
+
+  test('R2-S1：阶段 06 校验记录缺 V1–V12 任一条即拒绝导出', () => {
+    const missingV12 = {
       ...BASE_INPUT,
       gateConclusion: {
         ...gateConclusionFixture(),
-        validationChecks: [{ id: 'V4', result: 'fail' as const }],
+        validationChecks: gateConclusionFixture().validationChecks.filter(
+          (record: { id: string }) => record.id !== 'V12',
+        ),
       },
     };
-    const gates = JSON.parse(buildV06ModelPackage(withFail).files['manifest.json']).gateConclusion;
-    assert.equal(gates.perGate.gate5_frozen_inputs_and_fail_closed, 'FAIL');
+    assert.throws(() => buildV06ModelPackage(missingV12), /V12/);
     const withNone = {
       ...BASE_INPUT,
       gateConclusion: { ...gateConclusionFixture(), validationChecks: [] },
     };
     assert.throws(() => buildV06ModelPackage(withNone), /阶段 06|校验/);
+  });
+
+  test('R2-S1 回归：校验全 PASS 但科学门槛 FAIL_NOT_POSITIVE → 仍导出且 stage Staging（门槛结论如实入包）', () => {
+    // 区分两种失败：阶段 06 校验 FAIL（不可导出）与科学门槛未过（可导出、如实入账、只到 Staging）。
+    const built = buildV06ModelPackage(BASE_INPUT);
+    const manifest = JSON.parse(built.files['manifest.json']);
+    assert.equal(manifest.model.stage, 'Staging');
+    assert.equal(manifest.gateConclusion.selectionGate, 'FAIL_NOT_POSITIVE');
+    assert.equal(manifest.gateConclusion.perGate.gate5_frozen_inputs_and_fail_closed, 'PASS');
+    assert.equal(manifest.gateConclusion.perGate.gate1_all_dims_positive_significant, 'FAIL');
   });
 
   test('门槛未过时 Stage 上限 Staging：不得导出为 Production', () => {

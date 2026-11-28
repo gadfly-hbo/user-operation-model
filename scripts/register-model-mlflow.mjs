@@ -21,6 +21,9 @@
  *   - 包恰好 3 文件（predict.mjs / manifest.json / README.md）；
  *   - `formatVersion === 1`、`model.stage === 'Staging'`；
  *   - `manifest.gateConclusion` 存在且与管线产物（`models/work-v06/`）一致——门槛未过必须如实入账；
+ *   - **复核修单 R2-S1**：包内 `gateConclusion.validationChecks` 与管线产物 `validation.json` 的
+ *     checks 必须 **V1–V12 齐全且全部 pass 且逐条一致**，`gate5` 派生结论为 PASS——
+ *     阶段 06 有 FAIL 的失败包一律拒绝登记（不能只看调用方传参）；
  *   - `data.fingerprint.sha256` 与宿主侧对原始输入（`models/work-v06/dataset.json`）的独立重算一致。
  *
  * Stage 只到 **Staging**：晋级 Production 需 P2-13 真实数据重训并另获用户授权（走 Registry 晋级）。
@@ -120,12 +123,16 @@ async function main() {
 
   // ---- 复核修单 S5：登记地址只允许本机回环（在任何请求发出之前） ----
   let assertLoopbackMlflowUrl;
+  let assertStage06ChecksRegistrable;
   try {
     ({ assertLoopbackMlflowUrl } = await import(
       pathToFileURL(join(REPO_ROOT, 'packages/tool2-portrait-predict/dist/src/register/url-guard.js')).href
     ));
+    ({ assertStage06ChecksRegistrable } = await import(
+      pathToFileURL(join(REPO_ROOT, 'packages/tool2-portrait-predict/dist/src/register/validation-gate.js')).href
+    ));
   } catch {
-    fail('无法加载 url-guard（请先 npm run build）——登记地址守卫缺位时拒绝登记（fail-closed）');
+    fail('无法加载 url-guard／validation-gate（请先 npm run build）——登记守卫缺位时拒绝登记（fail-closed）');
   }
   try {
     assertLoopbackMlflowUrl(args.url);
@@ -146,6 +153,24 @@ async function main() {
   const gates = manifest.gateConclusion;
   if (!gates) fail('manifest 缺门槛结论（gateConclusion）——门槛未过必须如实入账，拒绝登记');
 
+  // ---- 复核修单 R2-S1：候选包的阶段 06 校验记录必须 V1–V12 全 PASS（任一非 PASS 即拒绝） ----
+  // 依据是包内 manifest 自带的校验记录（由导出器从管线阶段 06 实际结果派生），
+  // 不是调用方传参；gate5 的派生结论必须与之相符。
+  if (!Array.isArray(gates.validationChecks)) {
+    fail('manifest.gateConclusion.validationChecks 缺失或不是数组——无法核验 V1–V12 全 PASS，拒绝登记');
+  }
+  try {
+    assertStage06ChecksRegistrable(gates.validationChecks, 'manifest.gateConclusion.validationChecks');
+  } catch (error) {
+    fail(error.message);
+  }
+  if (gates.perGate?.gate5_frozen_inputs_and_fail_closed !== 'PASS') {
+    fail(
+      `manifest gate5（gate5_frozen_inputs_and_fail_closed）必须为 PASS 才可登记，实际 ` +
+        `${String(gates.perGate?.gate5_frozen_inputs_and_fail_closed)}——校验失败包不得登记`,
+    );
+  }
+
   // data_sha256 宿主侧独立重算（对原始输入 dataset.json）
   const datasetPath = join(args.workDir, 'dataset.json');
   if (!existsSync(datasetPath)) fail(`找不到管线原始输入 ${datasetPath}，无法独立核对 data_sha256`);
@@ -163,6 +188,23 @@ async function main() {
     }
     if (validation.selection?.winner?.name !== gates.selectedVariant) {
       fail(`选中变体与管线产物不一致：manifest=${gates.selectedVariant} 管线=${validation.selection?.winner?.name}`);
+    }
+    // 复核修单 R2-S1：管线校验产物同样必须全 PASS，且与包内记录逐条一致
+    //（包被换过而产物没换——或反之——都会在这里现形）。
+    if (!Array.isArray(validation.checks)) {
+      fail(`管线校验产物 ${validationPath} 缺 checks 数组，无法核验阶段 06 结论`);
+    }
+    try {
+      assertStage06ChecksRegistrable(validation.checks, `管线产物 ${validationPath}`);
+    } catch (error) {
+      fail(error.message);
+    }
+    const manifestRecords = gates.validationChecks.map((check) => `${check.id}=${check.result}`).join(',');
+    const pipelineRecords = validation.checks.map((check) => `${check.id}=${check.result}`).join(',');
+    if (manifestRecords !== pipelineRecords) {
+      fail(
+        `阶段 06 校验记录与管线产物不一致：\n  manifest: ${manifestRecords}\n  管线:     ${pipelineRecords}`,
+      );
     }
   } else {
     fail(`找不到管线校验产物 ${validationPath}，门槛结论无法与管线结果核对`);

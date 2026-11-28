@@ -29,6 +29,12 @@
  * - B3：V12 比对的基线改为 ablation **实际使用**的折内基线（`runV06Ablation` 返回值）。
  * - C 项：V10／V12 校验结论更实 → 模型包升版 **v2**（v1 已登记 Staging，保持不动）。
  *
+ * 复核修单二轮（2026-11-28，review-p2-round2.md）：
+ * - R2-S1：阶段 06（V1–V12）任一校验非 PASS 时**不导出**可登记模型包（fail-closed：
+ *   不写 `models/` 下的包、不覆盖既有包，诊断只留在工作目录且不带 stage）；
+ *   科学门槛 FAIL_NOT_POSITIVE（校验全 PASS）不受影响，照常导出并如实入账。
+ *   manifest.gateConclusion 自带 V1–V12 校验记录，登记脚本据它核验后方可登记。
+ *
  * 用法：
  *   node scripts/v06-pipeline.mjs
  *   node scripts/v06-pipeline.mjs --root /path/to/data/archive-modelevol/v06-tmall-25q4
@@ -314,7 +320,17 @@ async function main() {
   writeJson(join(args.out, 'baseline-comparison.json'), pipeline.buildV06BaselineComparison(metrics));
   writeJson(join(args.out, 'validation.json'), { checks, selection: { winner: selection.winner, gate: selection.gate } });
 
-  // ---- 模型包导出（P2-7） ----
+  // ---- 复核修单 R2-S1：阶段 06 有 FAIL 时不得导出可登记模型包（fail-closed） ----
+  // 诊断产物只保留在工作目录（validation.json 等，明确不登记）；既有模型包目录不清理、
+  // 不覆盖——失败运行不得破坏上一次成功导出的包。科学门槛 FAIL_NOT_POSITIVE 不属于
+  // 校验失败（failed 仍为 0），照常导出并把门槛结论如实写进 manifest。
+  if (failed > 0) {
+    say(`阶段 06 有 ${failed} 条校验未通过——按 fail-closed 跳过模型包导出（诊断见 ${args.out}/validation.json）。`);
+    fail(`\nFAIL-CLOSED: 阶段 06 有 ${failed} 条校验未通过，未导出任何可登记模型包。`);
+    return;
+  }
+
+  // ---- 模型包导出（P2-7；仅在校验全 PASS 时执行） ----
   const inputColumns = [
     ...new Set(
       selection.winner.groups.flatMap((group) =>
@@ -375,10 +391,6 @@ async function main() {
 
   say('');
   say(`产物目录 ${args.out}`);
-  if (failed > 0) {
-    fail(`\nFAIL-CLOSED: 阶段 06 有 ${failed} 条校验未通过。`);
-    return;
-  }
   say('六阶段实跑通过：fail-closed 校验全部 PASS。');
 }
 

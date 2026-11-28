@@ -70,6 +70,7 @@ import {
 } from '../src/pipeline/v06/frozen-inputs.js';
 import type { V06ModelArtifact } from '../src/pipeline/v06/04-select-final.js';
 import { jsSimilarity } from '@uom/core/model/metrics';
+import type * as tsNS from 'typescript';
 
 // ---------------------------------------------------------------------------
 // §9.2 编译期守卫
@@ -107,7 +108,7 @@ function syntheticSample(index: number): V06Sample {
     category: index % 2 === 0 ? '外套' : '上衣',
     subcategory: index % 4 === 0 ? '棉外套' : '休闲外套',
     season: 'Q4',
-    productAttribute: index % 5 === 0 ? '新品' : '老品',
+    productAttribute: index % 5 === 0 ? '电商一年期' : '老品',
     ipCollab: '',
     specialFunctionMaterial: index % 3 === 0 ? '防护' : '',
   };
@@ -946,6 +947,31 @@ describe('阶段 06 validate', () => {
     assert.equal(missingActual.find((check) => check.id === 'V4')?.result, 'fail');
   });
 
+  test('V4 行为层（R2-S2）：folds 篡改一字节 → 运行时重算哈希 → 真实判定路径必 FAIL', () => {
+    // 复核者绕过手法（M-B2-bypass）把 actual 一侧退回钉死常量后，篡改 folds 仍 V4 PASS。
+    // 本用例锁定行为语义：临时文件翻一字节 → 按运行时重算 sha256 → 喂给真实 V4 判定路径
+    // （assertFrozenFoldsSha256 与 validateV06 的 actualFoldsSha256 入参）→ 必须 FAIL。
+    const dir = mkdtempSync(join(tmpdir(), 'uom-v06-v4-behavior-'));
+    const foldsPath = join(dir, 'folds.json');
+    const original = '{"schemaVersion":1,"k":5,"seed":20260911,"folds":[["S1","S2"],["S3","S4"]]}';
+    writeFileSync(foldsPath, original, 'utf8');
+    const honestHash = createHash('sha256').update(readFileSync(foldsPath)).digest('hex');
+    const tampered = original.replace('"seed":20260911', '"seed":20260912'); // 恰好差 1 字节
+    assert.notEqual(tampered, original);
+    writeFileSync(foldsPath, tampered, 'utf8');
+    const runtimeHash = createHash('sha256').update(readFileSync(foldsPath)).digest('hex');
+    assert.notEqual(runtimeHash, honestHash, '一字节篡改必须改变运行时哈希');
+    assert.notEqual(runtimeHash, FROZEN_FOLDS_SHA256, '篡改后的哈希必不等于钉死值');
+
+    // 真实判定路径 ①：阶段 02 的钉死断言（管线在导出前调用）
+    assert.throws(() => assertFrozenFoldsSha256(runtimeHash), /冻结 folds/);
+    // 真实判定路径 ②：阶段 06 的 V4（比对钉死值与运行时哈希）
+    const input = buildValidationInput();
+    const checks = makeChecks(input, { ...fullPassOverrides(input), actualFoldsSha256: runtimeHash });
+    const v4 = checks.find((check) => check.id === 'V4')!;
+    assert.equal(v4.result, 'fail', `篡改 folds 后 V4 必须失败，实际：${v4.detail}`);
+  });
+
   test('V9：重跑结果不一致即 fail', () => {
     const input = buildValidationInput();
     const checks = makeChecks(input, {
@@ -1000,10 +1026,29 @@ describe('阶段 06 validate', () => {
     assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
   });
 
-  test('V12：「≠全量基线」按各自维度比对——画像恒定的维度与其自身全量基线相同必须被抓', () => {
+  test('V12：「≠全量基线」按各自维度语义判定——整折六维折内基线全部等于全量基线必须被抓', () => {
     // 复核修单 B3 回归：旧实现把全量基线固定按「预测性别」计算，却对六个维度都比较——
-    // 其余五维是跨维度比较、必然「不同」，断言恒真。构造一个画像恒定的维度
-    // （折内均值 == 自身全量均值）：旧实现下 V12 仍 pass（跨维度比较放行），修复后 fail。
+    // 其余五维是跨维度比较、必然「不同」，断言恒真。R2 建议项 4 之后 V12 的判定语义：
+    // 单个维度折内==全量（画像恒定）只记录不拦截；**整折所有维度**都等于各自全量基线时，
+    // 折内性完全无法证明（整折泄漏与全维恒定不可区分）→ 必须判 fail（fail-closed）。
+    // 本夹具让六维画像全部恒定：无论新旧实现、正确按维比较都会命中——跨维度 bug 同样被杀。
+    const samples: V06Sample[] = Array.from({ length: 10 }, (_, index) => {
+      const base = syntheticSample(index);
+      const portraits = {} as V06Sample['portraits'];
+      for (const dimension of V06_TARGET_DIMENSIONS) {
+        const [first, second] = DIM_LABELS[dimension]!;
+        portraits[dimension] = { [first]: 0.4, [second]: 0.6 };
+      }
+      return { ...base, portraits };
+    }).sort((left, right) => (left.sku < right.sku ? -1 : left.sku > right.sku ? 1 : 0));
+    const input = buildValidationInput(samples);
+    const checks = makeChecks(input, fullPassOverrides(input));
+    assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
+  });
+
+  test('V12 不误报（R2 建议项 4）：仅单个维度画像恒定（折内==全量）→ 记录差异、不判 fail', () => {
+    // 合法情形：某维度画像对所有样本恒定 → 折内均值必然等于全量均值。
+    // 该维度无法单独区分折内／全量，但其余维度的「折内 ≠ 全量」证明了折内计算 → 不拦截。
     const samples: V06Sample[] = Array.from({ length: 10 }, (_, index) => {
       const base = syntheticSample(index);
       const portraits = { ...base.portraits };
@@ -1012,7 +1057,12 @@ describe('阶段 06 validate', () => {
     }).sort((left, right) => (left.sku < right.sku ? -1 : left.sku > right.sku ? 1 : 0));
     const input = buildValidationInput(samples);
     const checks = makeChecks(input, fullPassOverrides(input));
-    assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
+    const v12 = checks.find((check) => check.id === 'V12')!;
+    assert.equal(v12.result, 'pass', `单维恒定不得误报，实际 detail：${v12.detail}`);
+    assert.ok(
+      v12.detail?.includes('预测年龄'),
+      `V12 输出必须写明判定条件与等值维度（可审计），实际 detail：${v12.detail}`,
+    );
   });
 });
 
@@ -1049,19 +1099,114 @@ describe('tool2 包级结构守卫', () => {
 
   test('结构守卫：管线脚本 V4 用钉死常量、不做运行时自比较（B2）；基线来自 ablation 实际值（B3）；系数区有钉死校验（S2）', () => {
     const source = stripComments(readFileSync(resolve(here, '../../../../scripts/v06-pipeline.mjs'), 'utf8'));
-    assert.ok(
-      source.includes('frozenFoldsSha256: pipeline.FROZEN_FOLDS_SHA256'),
-      'V4 冻结值必须用钉死常量（不得用运行时哈希自比较）',
-    );
-    assert.ok(
-      !source.includes('frozenFoldsSha256: foldsSha256'),
-      'V4 不得把同一运行时哈希同时当冻结值与实际值（自比较恒 PASS）',
-    );
     assert.ok(source.includes('assertFrozenFoldsSha256'), '管线必须在阶段 02 后做 folds 钉死校验（B2）');
     assert.ok(source.includes('assertFrozenCoefficientSha256'), '管线必须在阶段 04 后做系数区钉死校验（S2）');
     assert.ok(
       source.includes('ablation[0]?.foldBaselines'),
       'V12 必须比对 ablation 实际使用的折内基线（B3）',
+    );
+  });
+
+  test('结构守卫（R2-S2·AST）：validate 入参与钉死断言的实参必须来自运行时变量——字面量与常量标识符形态一律拒绝', async () => {
+    // 复核者绕过手法（M-B2-bypass）：把 actualFoldsSha256 / assertFrozenFoldsSha256 实参
+    // 改成钉死常量 `pipeline.FROZEN_FOLDS_SHA256`（常量比常量，自比较恒 PASS）后，
+    // 旧的「禁止某一写法」文本守卫 436 全绿。这里改用 AST 形态判定：
+    // `actualFoldsSha256` 与两个钉死断言的实参必须是**运行时变量（标识符）**——
+    // 字符串字面量与 `pipeline.FROZEN_FOLDS_SHA256` 这类常量标识符（成员访问）都过不了。
+    const tsModule = await import('typescript');
+    const ts: typeof tsNS = (tsModule as unknown as { default?: typeof tsNS }).default ?? tsModule;
+    const scriptPath = resolve(here, '../../../../scripts/v06-pipeline.mjs');
+    const sourceFile = ts.createSourceFile(
+      scriptPath,
+      readFileSync(scriptPath, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+
+    const properties = new Map<string, tsNS.Expression[]>();
+    const assertCalls = new Map<string, tsNS.Expression[]>();
+    const walk = (node: tsNS.Node): void => {
+      if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name)) {
+        const list = properties.get(node.name.text) ?? [];
+        list.push(node.initializer);
+        properties.set(node.name.text, list);
+      }
+      if (ts.isCallExpression(node) && node.arguments.length === 1) {
+        // 兼容两种调用形态：直接调用 assertFrozenXxx(...) 与经命名空间 pipeline.assertFrozenXxx(...)
+        const calleeName = ts.isIdentifier(node.expression)
+          ? node.expression.text
+          : ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.name)
+            ? node.expression.name.text
+            : undefined;
+        if (calleeName?.startsWith('assertFrozen')) {
+          const list = assertCalls.get(calleeName) ?? [];
+          list.push(node.arguments[0]!);
+          assertCalls.set(calleeName, list);
+        }
+      }
+      node.forEachChild(walk);
+    };
+    sourceFile.forEachChild(walk);
+
+    const isFrozenConstantAccess = (expression: tsNS.Expression): boolean =>
+      ts.isPropertyAccessExpression(expression) &&
+      ts.isIdentifier(expression.expression) &&
+      expression.expression.text === 'pipeline' &&
+      expression.name.text === 'FROZEN_FOLDS_SHA256';
+    // actual 一侧必须是运行时哈希变量 `foldsSha256` 本名——字符串字面量、
+    // `pipeline.FROZEN_FOLDS_SHA256`、以及改名的中间常量标识符一律拒绝。
+    const isRuntimeFoldsVariable = (expression: tsNS.Expression): boolean =>
+      ts.isIdentifier(expression) && expression.text === 'foldsSha256';
+
+    // V4 输入侧：frozen 一侧必须取钉死常量，actual 一侧必须是运行时变量
+    const frozenSides = properties.get('frozenFoldsSha256') ?? [];
+    assert.ok(frozenSides.length >= 1, '脚本必须向 validate 传入 frozenFoldsSha256');
+    for (const initializer of frozenSides) {
+      assert.ok(
+        isFrozenConstantAccess(initializer),
+        `frozenFoldsSha256 必须取钉死常量 pipeline.FROZEN_FOLDS_SHA256，实际：${initializer.getText(sourceFile)}`,
+      );
+    }
+    const actualSides = properties.get('actualFoldsSha256') ?? [];
+    assert.ok(actualSides.length >= 1, '脚本必须向 validate 传入 actualFoldsSha256');
+    for (const initializer of actualSides) {
+      assert.ok(
+        isRuntimeFoldsVariable(initializer),
+        `actualFoldsSha256 必须取运行时哈希变量 foldsSha256（字面量／常量标识符／改名中间量即自比较），实际：${initializer.getText(sourceFile)}`,
+      );
+    }
+
+    // 阶段 02／04 的钉死断言：实参必须是运行时变量（不得拿常量喂给自己）
+    for (const [name, variable] of [
+      ['assertFrozenFoldsSha256', 'foldsSha256'],
+      ['assertFrozenCoefficientSha256', 'coefficientHash'],
+    ] as const) {
+      const callArguments = assertCalls.get(name) ?? [];
+      assert.ok(callArguments.length >= 1, `管线必须调用 ${name}`);
+      for (const argument of callArguments) {
+        assert.ok(
+          ts.isIdentifier(argument) && argument.text === variable,
+          `${name} 的实参必须是运行时变量 ${variable}（字面量／常量标识符即自比较），实际：${argument.getText(sourceFile)}`,
+        );
+      }
+    }
+  });
+
+  test('结构守卫（R2-S1）：模型包导出被阶段 06 结果门控——有 FAIL 不导出、不覆盖既有包', () => {
+    const source = stripComments(readFileSync(resolve(here, '../../../../scripts/v06-pipeline.mjs'), 'utf8'));
+    const gateIndex = source.indexOf('failed > 0');
+    const exportIndex = source.indexOf('writeV06ModelPackage(');
+    const rmIndex = source.indexOf('rmSync(');
+    assert.ok(gateIndex >= 0, '脚本必须统计阶段 06 失败数');
+    assert.ok(exportIndex >= 0, '脚本必须包含模型包导出调用');
+    assert.ok(
+      gateIndex < exportIndex,
+      `阶段 06 失败门控（偏移 ${gateIndex}）必须先于导出调用（偏移 ${exportIndex}）`,
+    );
+    assert.ok(
+      rmIndex < 0 || gateIndex < rmIndex,
+      `失败门控（偏移 ${gateIndex}）必须先于包目录清理 rmSync（偏移 ${rmIndex}）——失败运行不得覆盖既有包`,
     );
   });
 });

@@ -16,8 +16,9 @@
  * - **V12 基线折内独立复算**：用**独立实现**（本文件内直接按训练折求均值，不调用
  *   ablation 的 `v06AccountMeanBaseline`）逐折复算账号均值基线，与 ablation **实际使用**
  *   的基线（由 `runV06Ablation` 返回、调用方传入）逐维逐标签比对；同时按**各自维度**
- *   断言「折内基线 ≠ 全量基线」，证明基线确实没有用评估折的信息。
- *   缺基线输入即 fail（fail-closed）。
+ *   检查「折内基线 ≠ 全量基线」以证明基线确实没有用评估折的信息——判定条件（二轮建议项 4）：
+ *   单个维度等值（画像恒定／巧合等值）只记录进 detail 不拦截，**整折所有维度**等值
+ *   （折内性完全无法证明）才判 fail。缺基线输入即 fail（fail-closed）。
  *
  * 其余修单修正：V1／V4 缺输入时 fail（不再默认 pass）；V4 的冻结值由
  * `frozen-inputs.ts` 钉死常量提供（不得用运行时哈希自比较）；V10 改为真实判定
@@ -361,7 +362,8 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
     });
   }
 
-  // ---- V12 基线折内独立复算（复核修单 B3：独立实现 + 逐维度比对 + fail-closed） ----
+  // ---- V12 基线折内独立复算（复核修单 B3：独立实现 + 逐维度比对 + fail-closed；
+  //      二轮建议项 4：折内==全量按维度语义判定——单维等值只记录不拦截，整折全维等值才判 fail） ----
   {
     const problems: string[] = [];
     const details: string[] = [];
@@ -407,6 +409,12 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
           problems.push(`第 ${fold} 折训练样本为空`);
           continue;
         }
+        // 判定条件（二轮建议项 4）：某维度折内基线与其**自身**全量基线相等时，
+        // 该维度单独无法区分「折内计算」与「泄漏」（画像恒定与巧合等值都合法）。
+        // 此时按维度语义判定：其余维度出现「折内 ≠ 全量」即证明折内计算，等值维度只记录；
+        // **整折所有维度**都等值 → 折内性完全无法证明（整折泄漏不可排除）→ fail（fail-closed）。
+        const indistinguishable: string[] = [];
+        let anyDimensionProvesFoldInternal = false;
         for (const dimension of V06_TARGET_DIMENSIONS) {
           const recomputed = meanDistribution(trainSamples, dimension);
           const key = `fold:${fold}:${dimension}`;
@@ -420,15 +428,30 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
           }
           const globalBaseline = globalByDimension.get(dimension)!;
           if (sameDistribution(recomputed, globalBaseline)) {
-            problems.push(`${key} 与本维度全量基线相同，未体现折内计算`);
+            indistinguishable.push(dimension);
+          } else {
+            anyDimensionProvesFoldInternal = true;
           }
+        }
+        if (indistinguishable.length === V06_TARGET_DIMENSIONS.length) {
+          problems.push(
+            `第 ${fold} 折所有维度的折内基线都与各自全量基线相同——折内性无法证明` +
+              `（可能整折泄漏，或全部画像恒定；fail-closed 不放行）`,
+          );
+        } else if (indistinguishable.length > 0) {
+          details.push(
+            `fold ${fold}: 维度 ${indistinguishable.join('／')} 折内==全量` +
+              `（该维画像恒定或巧合等值，无法单独区分；折内性由其余维度证明，不判 fail）`,
+          );
         }
         details.push(`fold ${fold}: 训练样本 ${trainSamples.length}`);
       }
     }
     checks.push({
       id: 'V12',
-      check: 'account-mean baseline recomputed independently inside each fold',
+      check:
+        'account-mean baseline recomputed independently inside each fold ' +
+        '（判定条件：折内==全量按维度语义判定——单维等值只记录，整折全维等值判 fail）',
       result: problems.length === 0 ? 'pass' : 'fail',
       detail: problems.length === 0 ? details.join('; ') : problems.slice(0, 5).join('; '),
     });

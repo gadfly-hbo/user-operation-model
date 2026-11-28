@@ -17,6 +17,9 @@
  * - `manifest.gateConclusion` 由管线阶段 04／05／06 的**实际结果**派生（选中变体、门槛总判定、
  *   逐门槛结果、gate5 由 V1–V12 判定、宏平均 js_lift、系数区／冻结 folds 双 sha256、
  *   「Stage 上限 Staging，晋级需 P2-13 真实数据重训并另获授权」），缺任一证据即抛错；
+ *   **复核修单 R2-S1**：阶段 06 校验记录（V1–V12）随门槛结论写入 manifest，且任一校验非 PASS
+ *   （或记录不齐全）即拒绝导出——失败包不得产出「可登记」的带 stage 模型包；
+ *   科学门槛未过（如 FAIL_NOT_POSITIVE）不在此列，仍如实入包、只到 Staging。
  * - `manifest.model.stage` 只写初值 `Staging` 且随晋级**不回写**，Stage 以 Registry 为准；
  * - **无 `/predict` 端点**：包只提供 `import { predict }`，不起 HTTP 服务。
  *
@@ -119,6 +122,10 @@ const GATE_KEYS = [
   'gate5_frozen_inputs_and_fail_closed',
 ] as const;
 
+/** 阶段 06 的固定校验编号（V1–V12，与 register/validation-gate.ts 同源约定）。 */
+const GATE_CHECK_IDS = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10', 'V11', 'V12'];
+const GATE_CHECK_ID_SET: ReadonlySet<string> = new Set(GATE_CHECK_IDS);
+
 /** 阶段 05 的判定结果 → PASS／FAIL；未判定（null/缺失）即抛错，不静默。 */
 function gateResultLabel(pass: boolean | null | undefined, key: string): 'PASS' | 'FAIL' {
   if (pass === true) return 'PASS';
@@ -133,6 +140,8 @@ export interface V06GateConclusion {
   macroJsLift: number;
   perGate: Record<string, 'PASS' | 'FAIL'>;
   gate5DeterminedBy: string;
+  /** 阶段 06 校验记录（V1–V12；登记脚本据它核验全 PASS，不采信调用方传参） */
+  validationChecks: ReadonlyArray<{ id: string; result: 'pass' | 'fail' }>;
   frozenFoldsSha256: string;
   coefficientRegionSha256: string;
   stageCeiling: 'Staging';
@@ -165,6 +174,30 @@ function deriveGateConclusion(input: V06GateConclusionInput): V06GateConclusion 
   if (!Array.isArray(input.validationChecks) || input.validationChecks.length === 0) {
     throw new Error('门槛结论缺失：没有阶段 06 校验结论，gate5 无法由 V1–V12 判定');
   }
+  // 复核修单 R2-S1：阶段 06 任一校验非 PASS（或 V1–V12 不齐全）→ 不得导出可登记模型包。
+  // 注意区分：校验全 PASS 但科学门槛 FAIL_NOT_POSITIVE 是允许导出并登记 Staging 的
+  //（门槛结论如实写入）；这里的拒绝只针对 fail-closed 校验本身失败的情况。
+  const unknownChecks = input.validationChecks.filter((check) => !GATE_CHECK_ID_SET.has(check.id));
+  if (unknownChecks.length > 0) {
+    throw new Error(
+      `阶段 06 校验记录含未知编号：${unknownChecks.map((check) => check.id).join('／')}——校验集与管线约定（V1–V12）不符`,
+    );
+  }
+  const failedChecks = input.validationChecks.filter((check) => check.result !== 'pass');
+  if (failedChecks.length > 0) {
+    throw new Error(
+      `阶段 06 校验有 ${failedChecks.length} 条未通过（${failedChecks.map((check) => check.id).join('／')}）——` +
+        '校验失败的包不得导出为可登记模型包（fail-closed）；诊断产物请保留在管线工作目录（如 models/work-v06/validation.json）',
+    );
+  }
+  const missingCheckIds = GATE_CHECK_IDS.filter(
+    (id) => !input.validationChecks.some((check) => check.id === id),
+  );
+  if (missingCheckIds.length > 0) {
+    throw new Error(
+      `阶段 06 校验记录缺 ${missingCheckIds.join('／')}——记录不齐全无法证明全 PASS，拒绝导出`,
+    );
+  }
 
   const perGate: Record<string, 'PASS' | 'FAIL'> = {};
   for (const key of GATE_KEYS) {
@@ -173,7 +206,7 @@ function deriveGateConclusion(input: V06GateConclusionInput): V06GateConclusion 
     if (!entry) throw new Error(`门槛结论缺失：阶段 05 验收矩阵缺 ${key}`);
     perGate[key] = gateResultLabel(entry.pass, key);
   }
-  const failedChecks = input.validationChecks.filter((check) => check.result !== 'pass');
+  // 走到这里说明全部校验 pass（上方已 fail-closed 拒绝），gate5 恒为 PASS。
   perGate['gate5_frozen_inputs_and_fail_closed'] = failedChecks.length === 0 ? 'PASS' : 'FAIL';
 
   return {
@@ -182,6 +215,7 @@ function deriveGateConclusion(input: V06GateConclusionInput): V06GateConclusion 
     macroJsLift: input.macroJsLift,
     perGate,
     gate5DeterminedBy: `阶段 06 校验 V1-V12 判定（${input.validationChecks.length - failedChecks.length}/${input.validationChecks.length} pass）`,
+    validationChecks: input.validationChecks.map((check) => ({ id: check.id, result: check.result })),
     frozenFoldsSha256: input.frozenFoldsSha256,
     coefficientRegionSha256: input.coefficientRegionSha256,
     stageCeiling: 'Staging',
