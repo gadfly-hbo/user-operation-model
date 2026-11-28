@@ -204,3 +204,17 @@
 - **真实数据覆盖面**：现有样本无经营指标／漏斗／成交表，SA-04／05／08／09 的真实数据面 `NOT_PROVED`；唯一进入矩阵的真实匹配对前后各维度分一致（`.local/slice-a/accept/real-unit-structured-diff.json`）。
 - **范围外发现（已登记，归后续切片）**：单品画像文件名带月份前缀时 entityId 保留「款号」前缀（B1）；`deriveActualUnitPrice` 死代码（B1）；同月重复行覆盖无 issue（B1）；`get_retention_cohort.cohortMonth` 未校验（B1）；`get_brand_portrait` 的 `month` 未参与过滤（C）；断网守卫不拦 `fetch`（C）。
 - **过程披露**：本切片由三位实现者分五批完成（单个子代理有轮次上限，第一批到限中止）；主 agent 验收中拦下并退回两处自行发挥（区间标签被当月份放行、工具1 可选月份变成区间标签）；第一轮复核指出主 agent 所写规格 SA-12 的「演示报告逐字节一致」与已拍板的 R-3 相抵触，已以 v0.2 修正节更正。
+
+## 交付回填（主 agent，2026-11-28）
+
+| 项 | 结果 |
+| --- | --- |
+| 用户授权 | 2026-11-28 对「推送分支、开 PR、跑 CI、绿了合并」回复「授权」 |
+| 推送 | `work/foundation-period-model @ 7ccaee3`（复核过的候选，未再改动） |
+| PR | [#8](https://github.com/gadfly-hbo/user-operation-model/pull/8)，53 个文件（+5026／−643） |
+| CI | Check 运行 `46150986745`：数据不出网守卫 `SUCCESS`、校验 `SUCCESS`（`headSha` = `7ccaee3`）；`mergeStateStatus` CLEAN |
+| 合并 | squash 合并到 `main @ 22c55f4`（`--match-head-commit 7ccaee3`），2026-11-28 13:43 UTC；远端分支已删；本地 `main` 已快进并在合并后的主干上复跑 `npm run check` 647/647 |
+| 第三轮复核建议 S1–S5 | 顺延切片 B1，已并入 `openspec/changes/foundation-identity-health/spec.md` 的 SB-10 |
+| 保留项 | 上文「永久性 `NOT_PROVED`」「`NOT_RUN`」「真实数据覆盖面」「范围外发现」原样保留，不因合并而改写 |
+
+本回填不改变上文任何状态词。
