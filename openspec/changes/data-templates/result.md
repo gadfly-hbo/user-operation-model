@@ -1,6 +1,6 @@
 # Data-Templates · 实施结果（DT-2／DT-3／DT-4＋复核修单）
 
-> 变更：[spec.md](spec.md)（首轮范围 DT-2／DT-3／DT-4；DT-5 复核已完成；DT-6 PR 由主 agent 另行安排）
+> 变更：[spec.md](spec.md)（首轮范围 DT-2／DT-3／DT-4；DT-5 三轮复核完成，第三轮 PASS；DT-6 已完成，PR #7 合并 `main` @ `49c206f`）
 > 执行：SDD·TDD 实现者 · 分支 `work/data-templates`（基线 `4ce38e4`，未 push）
 > 独立复核：**第一轮 FAIL**（`review.md` @ `6173a33`：阻断 B1–B4／应修 R-1～R-5／建议 9 条），修单见 **§9**（2026-11-28）；**第二轮（范围限定重验）PASS、应修 1–5**（`review-round2.md`，入库于 `9e050f5`），处置见 **§10**（2026-11-28 本轮）
 
@@ -14,8 +14,8 @@
 | DT-2 | 契约固化 + 生成脚本 + 防漂移测试（TDD 先 RED） | **完成** | §2、§3；首轮 RED→GREEN 见 §4 |
 | DT-3 | 生成模板 + 文档指针 + README 旧名修正 | **完成** | §2；`templates/数据模板.xlsx` 已生成并入库 |
 | DT-4 | 全量检查 | **完成**（两项 NOT_RUN，见 §5） | §5 |
-| DT-5 | 独立复核 | **完成：FAIL** | `review.md`（阻断 4 条全在业务侧可用性）；修单见 §9 |
-| DT-6 | PR／CI／授权 squash 合并 | **未做** | 主 agent 安排；本单未 push |
+| DT-5 | 独立复核 | **完成：三轮** | 第一轮 **FAIL**（[review.md](review.md)，阻断 4 条全在业务侧可用性）→ 修单 §9 → 第二轮 **PASS**（[review-round2.md](review-round2.md)，应修 5 已修）→ 第三轮 **PASS、阻断 0**（[review-round3.md](review-round3.md)） |
+| DT-6 | PR／CI／授权 squash 合并 | **完成** | PR #7；CI 两项全绿（校验／数据不出网守卫）；用户授权后 squash 合并 `main` @ `49c206f`；远端／本地分支已删（删前内容等价核验为空） |
 
 ---
 
