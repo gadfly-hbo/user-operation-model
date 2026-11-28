@@ -206,6 +206,10 @@ async function run() {
     .filter((p) => p.length > 0);
 
   const hits = [];
+  // review-round2 建议①：xlsx 读取失败从 fail-open（静默 continue）改为
+  // fail-closed——读不了的 tracked xlsx 视同违规退出 1，避免损坏／异常文件
+  // 悄悄逃过内容扫描。
+  const xlsxErrors = [];
   let scanned = 0;
   let xlsxScanned = 0;
   for (const path of tracked) {
@@ -215,6 +219,7 @@ async function run() {
       try {
         content = await extractXlsxText(path);
       } catch {
+        xlsxErrors.push(path);
         continue;
       }
       xlsxScanned += 1;
@@ -242,6 +247,13 @@ async function run() {
   if (hits.length > 0) {
     for (const hit of hits) process.stderr.write(`ERROR tracked 文件含归档真实内容片段: ${hit.path}（黑名单 ${hit.needle}）\n`);
     process.stderr.write('FAIL tracked 文件不得包含归档真实业务内容（B1 数据边界）。\n');
+    process.exit(1);
+  }
+  if (xlsxErrors.length > 0) {
+    for (const path of xlsxErrors) {
+      process.stderr.write(`ERROR tracked xlsx 无法读取（按违规处理，不回显内容）: ${path}\n`);
+    }
+    process.stderr.write('FAIL tracked xlsx 读取失败按 fail-closed 处理，不静默跳过（review-round2 建议①）。\n');
     process.exit(1);
   }
   process.stdout.write('PASS：tracked 文件不含归档真实内容片段。\n');

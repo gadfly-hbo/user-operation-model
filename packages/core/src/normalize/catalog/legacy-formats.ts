@@ -1,5 +1,7 @@
 /**
- * B／C 组既有格式契约（data-templates DT2 固化；复核修单 B2／B3／B4／S4 修订）。
+ * B／C 组既有格式契约（data-templates DT2 固化；复核修单 B2／B3／B4／S4 修订；
+ * 第二轮复核应修 R2-1～R2-4 再修订：抖音列名规则、京东示例维度、
+ * 抖音 XLSX 后果如实、京东／天猫文件名带月份与实体名——review-round2.md）。
  *
  * 这里固化的是「新增 12 表之外」的既有输入格式契约：商品主表、渠道店铺宽表
  * （不再提供代码不消费的「渠道层级对照」简化表——review.md B2）、三平台画像的
@@ -117,6 +119,12 @@ export interface PortraitFormatSpec {
    * 业务方以为给了数据却没有效果。
    */
   fileNameRule: string;
+  /**
+   * 表头硬规则（review-round2 应修 R2-1）：平台画像的实体／月份取自哪里、
+   * 业务侧要改什么。目前仅抖音需要（实体与月份取自第 3／4 列列名）；
+   * 京东／天猫取自文件名，要求写在 fileNameRule 里。
+   */
+  headerRule?: string;
   /** 允许的文件格式（按解析器实际；「CSV 与 XLSX 均可」只对真正两者都认的表成立）。 */
   saveFormat: string;
   /** XLSX 的 sheet 名要求（CSV 无 sheet，写「—」）。 */
@@ -124,6 +132,16 @@ export interface PortraitFormatSpec {
   /** 目录约定。 */
   targetDirs: string;
 }
+
+/**
+ * 抖音列名硬规则（review-round2 应修 R2-1，最高优先级）：
+ * 抖音画像的**实体名与月份取自列名**（`normalize/index.ts` 从「…-占比」列名解析，
+ * `normalize/identity.ts` `parsePortraitEntityId`），文件名与所在目录不参与。
+ * 业务侧必须把模板第 3／4 列列名改成自己的「起止年月＋实体名」，否则画像会
+ * **静默**全部归到模板演示实体「演示账号1」，无法与渠道宽表关联，且无任何报错。
+ */
+export const DOUYIN_HEADER_RULE =
+  '抖音画像长表例外：第 3／4 列列名必须改为「<起止年月><实体名>-占比」与「<起止年月><实体名>-tgi」（如 2601-2612演示账号1-占比）——抖音画像的实体名与月份取自列名，不是文件名或所在目录；不改列名会把画像全部静默归到模板演示实体「演示账号1」，实体名须与渠道店铺宽表「店铺」列一致';
 
 /** 抖音画像长表契约（CSV；实体与月份写在占比／TGI 列名里）。 */
 export const DOUYIN_PORTRAIT: PortraitFormatSpec = {
@@ -136,9 +154,16 @@ export const DOUYIN_PORTRAIT: PortraitFormatSpec = {
     ['预测性别', '女', '50.00%', '100'],
   ],
   hasTgi: true,
-  note: '标签类型至少覆盖六个统一维度：预测性别、预测年龄段、策略人群、消费能力、城市等级、预测人生阶段；原始年龄段档位不要提前归并（三平台分档各不相同）；TGI 缺失留空，不要填 0',
-  fileNameRule: '文件名须以「_抖音.csv」结尾（后缀精确匹配，且优先于所在目录；只含「抖音」不够）',
-  saveFormat: '仅 CSV（XLSX 不被识别：抖音解析器按 CSV 文本读取）',
+  note:
+    '标签类型至少覆盖六个统一维度：预测性别、预测年龄段、策略人群、消费能力、城市等级、预测人生阶段；原始年龄段档位不要提前归并（三平台分档各不相同）；TGI 缺失留空，不要填 0；'
+    + DOUYIN_HEADER_RULE,
+  fileNameRule:
+    '文件名须以「_抖音.csv」结尾（后缀精确匹配，且优先于所在目录；只含「抖音」不够；文件名不参与实体／月份识别——实体与月份取自列名）',
+  headerRule: DOUYIN_HEADER_RULE,
+  // review-round2 应修 R2-3：抖音存成 XLSX 会被 platform.ts 当 douyin、按 CSV 文本
+  // 解析二进制 → 找不到「…-占比」列 → NormalizationError 中断整个 buildIndex，
+  // 不是「不被识别／静默跳过」，措辞必须如实。
+  saveFormat: '仅 CSV（抖音解析器按 CSV 文本读取；存成 XLSX 会导致索引构建报错中断，不是静默跳过）',
   sheetName: '—（CSV 无 sheet）',
   targetDirs: 'data/source/live/<账号名>/<YYYY-MM>/、data/source/product-card/<店铺名>/<YYYY-MM>/ 或 data/domains/07_人群画像/抖音/',
 };
@@ -149,13 +174,19 @@ export const JD_PORTRAIT: PortraitFormatSpec = {
   label: '京东画像表',
   structureText: JD_STRUCTURE_TEXT,
   demoHeader: ['标签名', '枚举值', '占比', 'TGI'],
+  // review-round2 应修 R2-2：京东原生维度名是「性别」（不是「预测性别」，
+  // 见 portrait/catalog/dimensions.ts jd sourceDimensions）——示例照真实导出
+  // 的京东维度名给，照「预测性别」填的行不进统一维度投影（gender 丢失）。
   exampleRows: [
-    ['预测性别', '男', '0.5', '100'],
-    ['预测性别', '女', '0.5', '100'],
+    ['性别', '男', '0.5', '100'],
+    ['性别', '女', '0.5', '100'],
   ],
   hasTgi: true,
-  note: '京东占比导出已是小数（0.5＝50%），按原值读取；TGI 缺失留空，不要填 0',
-  fileNameRule: '文件名须以「_京东.xlsx」结尾（只含「京东」不够；后缀优先于所在目录，放 source/tmall/ 也会被识别为京东）',
+  note: '京东原生维度名：性别、年龄、十大靶群、购买力、城市线级——照京东导出的原生维度名填写才能投影到统一维度（写成抖音的「预测性别」不进投影）；京东占比导出已是小数（0.5＝50%），按原值读取；TGI 缺失留空，不要填 0',
+  // review-round2 应修 R2-4：京东实体与月份取自文件名（identity.ts parseFileNameEntity），
+  // 缺了会静默错挂（如「画像_京东.xlsx」→ 实体「画像」、月份空，无报错）。
+  fileNameRule:
+    '文件名须为「<起止年月><实体名>_京东.xlsx」形式：带月份与实体名且以「_京东.xlsx」结尾（如 2601-2612演示账号1_京东.xlsx；只含「京东」不够；实体与月份取自文件名，缺了会静默错挂到错误实体；后缀优先于所在目录，放 source/tmall/ 也会被识别为京东）',
   saveFormat: '仅 XLSX（CSV 不被识别）',
   sheetName: '必须为 Sheet0',
   targetDirs: 'data/source/tmall/<店铺名>/<YYYY-MM>/ 或 data/domains/07_人群画像/京东/',
@@ -173,7 +204,9 @@ export const TMALL_PORTRAIT: PortraitFormatSpec = {
   ],
   hasTgi: false,
   note: '天猫导出无 TGI 列，缺失与 0 是两回事，不要补 0；年龄档为闭区间写法（如 [18,24]），不要提前归并',
-  fileNameRule: '文件名须以「_天猫.xlsx」结尾（后缀精确匹配，且优先于所在目录）',
+  // review-round2 应修 R2-4：天猫实体与月份同样取自文件名，缺了静默错挂。
+  fileNameRule:
+    '文件名须为「<起止年月><实体名>_天猫.xlsx」形式：带月份与实体名且以「_天猫.xlsx」结尾（如 2601-2612演示账号1_天猫.xlsx；实体与月份取自文件名，缺了会静默错挂；后缀精确匹配，且优先于所在目录）',
   saveFormat: '仅 XLSX（CSV 不被识别）',
   sheetName: '必须为 明细',
   targetDirs: 'data/source/tmall/<店铺名>/<YYYY-MM>/ 或 data/domains/07_人群画像/天猫/',

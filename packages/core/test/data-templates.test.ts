@@ -1,8 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync, spawnSync } from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {
   buildIndex,
@@ -39,6 +40,7 @@ const REPO_ROOT = resolve(HERE, '../../../..');
 const TEMPLATE_PATH = join(REPO_ROOT, 'templates', '数据模板.xlsx');
 const README_PATH = join(REPO_ROOT, 'data', 'README.md');
 const GENERATOR_PATH = join(REPO_ROOT, 'scripts', 'build-data-templates.mjs');
+const ARCHIVE_GUARD_SCRIPT = join(REPO_ROOT, 'scripts', 'check-no-archive-content.mjs');
 
 /**
  * catalog 契约经 namespace 取用：修单新增常量（渠道店铺宽表表头等）在实现前
@@ -355,7 +357,12 @@ async function saveRoundTrip(root: string, useXlsx: boolean): Promise<{ spu: str
 interface IndexLike {
   products?: Array<{ spu: string; category?: { l2?: string; l3?: string }; extra?: Record<string, string> }>;
   channels?: Array<{ channelId: string; name?: string }>;
-  portraits?: Array<{ entityId: string; platformLabels: Record<string, unknown> }>;
+  portraits?: Array<{
+    entityId: string;
+    month?: string;
+    platformLabels: Record<string, unknown>;
+    projections?: Record<string, { labels?: Record<string, unknown> }>;
+  }>;
 }
 
 function assertRoundTripIndex(index: IndexLike, label: string, spu: string, channelId: string): void {
@@ -392,6 +399,41 @@ function assertRoundTripIndex(index: IndexLike, label: string, spu: string, chan
     jd && jd.entityId === '演示账号1',
     `[${label}] 京东画像未被识别为京东实体（B3：京东不得被当天猫解析）`,
   );
+  // R2-4：京东／天猫的实体与月份取自文件名（另存名「2601-2612演示账号1_京东.xlsx／_天猫.xlsx」）
+  assert.equal(
+    jd?.month,
+    '2026-01~2026-12',
+    `[${label}] 京东月份应按文件名「2601-2612」归属（R2-4：文件名须带月份与实体名）`,
+  );
+  const tmall = (index.portraits ?? []).find((portrait) => portrait.platformLabels['tmall']);
+  assert.ok(
+    tmall && tmall.entityId === '演示账号1',
+    `[${label}] 天猫画像实体应按文件名归属（R2-4）`,
+  );
+  assert.equal(
+    tmall?.month,
+    '2026-01~2026-12',
+    `[${label}] 天猫月份应按文件名「2601-2612」归属（R2-4）`,
+  );
+  const douyin = (index.portraits ?? []).find((portrait) => portrait.platformLabels['douyin']);
+  assert.ok(
+    douyin && douyin.entityId === '演示账号1' && douyin.month === '2026-01~2026-12',
+    `[${label}] 抖音画像实体／月份应取自列名「2601-2612演示账号1-占比」（R2-1 基线）`,
+  );
+  // R2-2：示例维度名必须是平台原生维度名才能投影到统一维度（京东是「性别」，不是「预测性别」）
+  const nativeGenderDimensions: Array<[string, string]> = [
+    ['douyin', '预测性别'],
+    ['jd', '性别'],
+    ['tmall', '预测性别'],
+  ];
+  for (const [platform, dimensionName] of nativeGenderDimensions) {
+    const portrait = (index.portraits ?? []).find((item) => item.platformLabels[platform]);
+    const gender = portrait?.projections?.gender;
+    assert.ok(
+      gender != null && gender.labels != null && Object.keys(gender.labels).length >= 1,
+      `[${label}] ${platform} 示例维度「${dimensionName}」未投影到统一维度 gender（R2-2：京东原生维度名是「性别」，照示例写成「预测性别」会整维丢失；模板示例行只有一行，投影含该行标签即可）`,
+    );
+  }
 }
 
 describe('DT0 交付物与工作簿结构', () => {
@@ -630,7 +672,7 @@ describe('DT2 单一来源：README「格式模板」↔ catalog 契约', () => 
     }
   });
 
-  test('README 平台硬规则与 catalog 文件名／格式／sheet 名契约逐字一致（B3）', () => {
+  test('README 平台硬规则与 catalog 文件名／格式／sheet 名契约逐字一致（B3；headerRule 如有一并锁定）', () => {
     const missing: string[] = [];
     for (const spec of legacyFormats.PORTRAIT_FORMATS) {
       const record = spec as unknown as Record<string, unknown>;
@@ -641,6 +683,11 @@ describe('DT2 单一来源：README「格式模板」↔ catalog 契约', () => 
           continue;
         }
         if (!readme.includes(value)) missing.push(`${spec.label}.${field}：${value}`);
+      }
+      // R2-1：抖音的列名硬规则（实体与月份取自列名）也必须写进 README 平台硬规则
+      const headerRule = record.headerRule;
+      if (typeof headerRule === 'string' && headerRule.length > 0 && !readme.includes(headerRule)) {
+        missing.push(`${spec.label}.headerRule：${headerRule}`);
       }
     }
     assert.deepEqual(
@@ -729,6 +776,189 @@ describe('DT2 单一来源：README「格式模板」↔ catalog 契约', () => 
   });
 });
 
+describe('R2 第二轮应修：契约与措辞锁（review-round2 应修 1–4）', () => {
+  const readme = readFileSync(README_PATH, 'utf8');
+
+  test('R2-1 抖音列名规则写清三处：使用说明／表目录（抖音行）／列说明（抖音列）', async () => {
+    const rule = catalogString(
+      'DOUYIN_HEADER_RULE',
+      'R2-1：抖音画像实体与月份取自列名的硬规则（不改列名会全部静默归到演示实体）',
+    );
+    const sheets = await committedSheets();
+    const usage = sheets.get('使用说明');
+    assert.ok(usage, '模板缺少「使用说明」sheet');
+    assert.ok(
+      sheetText(usage).includes(rule),
+      `「使用说明」应写明抖音列名规则（实体与月份取自第 3／4 列列名）：${rule}`,
+    );
+    const catalog = sheets.get('表目录');
+    assert.ok(catalog, '模板缺少「表目录」sheet');
+    assert.ok(
+      sheetText(catalog).includes(rule),
+      `「表目录」抖音行应写明抖音列名规则：${rule}`,
+    );
+    const doc = sheets.get('列说明');
+    assert.ok(doc, '模板缺少「列说明」sheet');
+    const douyinRows = doc.filter(
+      (row) => row[0]?.trim() === legacyFormats.DOUYIN_PORTRAIT.label,
+    );
+    assert.ok(
+      douyinRows.length >= legacyFormats.DOUYIN_PORTRAIT.demoHeader.length,
+      '「列说明」应覆盖抖音画像长表每一列',
+    );
+    assert.ok(
+      douyinRows.some((row) => row.some((cell) => cell.includes(rule))),
+      `「列说明」抖音画像长表的列条目应写明抖音列名规则：${rule}`,
+    );
+  });
+
+  test('R2-2 京东示例维度名＝京东原生维度「性别」；note 列出京东原生维度名', () => {
+    const jd = legacyFormats.JD_PORTRAIT;
+    assert.ok(jd.exampleRows.length >= 1, '京东画像契约应有示例行');
+    for (const row of jd.exampleRows) {
+      assert.equal(
+        row[0],
+        '性别',
+        '京东原生维度名是「性别」（portrait/catalog/dimensions.ts jd sourceDimensions）；示例写成「预测性别」不会投影到统一维度（R2-2）',
+      );
+    }
+    assert.match(
+      jd.note,
+      /京东原生维度名/,
+      '京东 note 应列出京东原生维度名（性别／年龄／十大靶群／购买力／城市线级），业务侧照抄京东导出的维度名才能进统一投影（R2-2）',
+    );
+  });
+
+  test('R2-3 抖音 XLSX 后果表述真实：表目录与 README 写「报错中断」，不再写「不被识别」', async () => {
+    const sheets = await committedSheets();
+    const catalog = sheets.get('表目录');
+    assert.ok(catalog, '模板缺少「表目录」sheet');
+    const catalogText = sheetText(catalog);
+    assert.match(
+      catalogText,
+      /存成 XLSX 会导致索引构建报错中断/,
+      '抖音存成 XLSX 实际会让 buildIndex 抛错中断（不是「不被识别」）——表目录须如实写后果（R2-3）',
+    );
+    assert.doesNotMatch(
+      catalogText,
+      /XLSX 不被识别/,
+      '「XLSX 不被识别」与真实行为不符（探针：_抖音.xlsx 会让索引构建抛错中断）',
+    );
+    assert.match(
+      readme,
+      /存成 XLSX 会导致索引构建报错中断/,
+      'data/README.md 平台硬规则须同步如实写抖音 XLSX 后果（R2-3）',
+    );
+  });
+
+  test('R2-4 京东／天猫 fileNameRule 写明「文件名须带月份与实体名」', async () => {
+    for (const spec of [legacyFormats.JD_PORTRAIT, legacyFormats.TMALL_PORTRAIT]) {
+      assert.match(
+        spec.fileNameRule,
+        /月份与实体名|实体与月份取自文件名/,
+        `${spec.label} 的 fileNameRule 应写明文件名须带月份与实体名（缺了会静默错挂到错误实体）——R2-4`,
+      );
+    }
+    const sheets = await committedSheets();
+    const catalog = sheets.get('表目录');
+    assert.ok(catalog, '模板缺少「表目录」sheet');
+    const hits = (sheetText(catalog).match(/实体与月份取自文件名/g) ?? []).length;
+    assert.ok(
+      hits >= 2,
+      `「表目录」京东／天猫两行都应写明「实体与月份取自文件名」，实际命中 ${hits} 次（R2-4）`,
+    );
+  });
+});
+
+describe('DT4/建议①：归档内容守卫 xlsx 读取失败 fail-closed（review-round2 建议①）', () => {
+  /** 合成黑名单源（fab ≥16 字即可派生出 ≥14 字片段）；不含任何真实业务内容。 */
+  const SYNTHETIC_FAB = '合成演示卖点文本用于守卫自测的样例内容，不含任何真实业务信息';
+
+  /**
+   * 在临时目录搭一个最小 git 沙箱仓库：把**当前真实脚本**复制进去运行。
+   * 脚本的 REPO_ROOT 取自身所在目录，且 import exceljs —— 因此复制运行
+   * （软链 node_modules），而不是在真实仓库里跑（那里没有损坏的 tracked xlsx）。
+   * 黑名单经 UOM_ARCHIVE_FIXED_ROOT 指向沙箱内合成 jsonl，不触真实归档数据。
+   */
+  async function runGuardSandbox(
+    xlsxMode: 'broken' | 'needle' | 'clean',
+  ): Promise<{ status: number | null; stdout: string; stderr: string }> {
+    const sandbox = makeTempDir('uom-archive-guard-');
+    symlinkSync(join(REPO_ROOT, 'node_modules'), join(sandbox, 'node_modules'), 'dir');
+    mkdirSync(join(sandbox, 'scripts'), { recursive: true });
+    const scriptCopy = join(sandbox, 'scripts', 'check-no-archive-content.mjs');
+    writeFileSync(scriptCopy, readFileSync(ARCHIVE_GUARD_SCRIPT, 'utf8'), 'utf8');
+
+    const archive = join(sandbox, 'archive-fixed');
+    const jsonlDir = join(archive, 'v04-holdout', 'work-package', 'train');
+    mkdirSync(jsonlDir, { recursive: true });
+    writeFileSync(
+      join(jsonlDir, 'product_attributes.jsonl'),
+      `${JSON.stringify({ fab: SYNTHETIC_FAB })}\n`,
+      'utf8',
+    );
+
+    mkdirSync(join(sandbox, 'templates'), { recursive: true });
+    const xlsxPath = join(sandbox, 'templates', 'sandbox.xlsx');
+    if (xlsxMode === 'broken') {
+      writeFileSync(xlsxPath, '这不是 xlsx——故意写坏的字节流，用于触发读取失败', 'utf8');
+    } else {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Sheet1');
+      sheet.addRow(['表头']);
+      sheet.addRow([xlsxMode === 'needle' ? SYNTHETIC_FAB : '干净的合成内容']);
+      await workbook.xlsx.writeFile(xlsxPath);
+    }
+
+    execFileSync('git', ['init', '-q'], { cwd: sandbox });
+    execFileSync('git', ['add', 'templates/sandbox.xlsx', 'scripts/check-no-archive-content.mjs'], {
+      cwd: sandbox,
+    });
+    execFileSync(
+      'git',
+      ['-c', 'user.name=guard-sandbox', '-c', 'user.email=guard-sandbox@local', 'commit', '-q', '-m', 'sandbox'],
+      { cwd: sandbox },
+    );
+
+    const result = spawnSync(process.execPath, [scriptCopy], {
+      cwd: sandbox,
+      encoding: 'utf8',
+      env: { ...process.env, UOM_ARCHIVE_FIXED_ROOT: archive },
+    });
+    return { status: result.status, stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? '') };
+  }
+
+  test('tracked xlsx 读取失败 → 守卫退出 1（fail-closed），不再静默跳过', async () => {
+    const result = await runGuardSandbox('broken');
+    assert.equal(
+      result.status,
+      1,
+      `损坏的 tracked xlsx 应让守卫 fail-closed 退出 1（现状：读取失败被静默跳过、守卫仍 exit 0）\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+    assert.match(result.stderr, /fail-closed/, '退出信息应说明是 fail-closed 处理');
+  });
+
+  test('tracked xlsx 单元格文本命中黑名单 → 退出 1（S3 行为回归锁）', async () => {
+    const result = await runGuardSandbox('needle');
+    assert.equal(
+      result.status,
+      1,
+      `xlsx 单元格文本命中黑名单应退出 1\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+    assert.match(result.stderr, /归档真实内容片段/, '命中报告应指明 tracked 文件与黑名单条目');
+  });
+
+  test('干净 tracked xlsx → 退出 0（不误伤）', async () => {
+    const result = await runGuardSandbox('clean');
+    assert.equal(
+      result.status,
+      0,
+      `干净 xlsx 不应被拦\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /PASS/, '干净场景应输出 PASS');
+  });
+});
+
 describe('DT3 防漂移：入库模板与代码契约全量一致（R-2：整 sheet 比对）', () => {
   test('重建结果与入库文件：sheet 集合与**全部行**逐字一致（含示例行与说明 sheet）', async () => {
     const committed = await committedSheets();
@@ -791,5 +1021,66 @@ describe('DT7 业务侧往返：按「表目录」另存后真实解析器／bui
         `「表目录」中 ${sheetName} 的解析器列应标注「未实现（P3 报表阶段）」`,
       );
     }
+  });
+
+  test('DT7/R2-1 抖音画像实体与月份取自列名：把第 3／4 列列名改成另一合成实体／月份后另存，归属随之变化', async () => {
+    const workbook = await readCommittedWorkbook();
+    const sheet = workbook.getWorksheet('抖音画像长表');
+    assert.ok(sheet, '模板缺少「抖音画像长表」sheet');
+    const { header, dataRow } = exampleAsDataRow('抖音画像长表', sheetMatrix(sheet));
+    // 模拟业务侧把第 3／4 列列名改成自己的月份与实体名（合成：演示账号2 / 2701-2712）
+    const renamedHeader = [...header];
+    renamedHeader[2] = '2701-2712演示账号2-占比';
+    renamedHeader[3] = '2701-2712演示账号2-tgi';
+    const root = makeTempDir('uom-dt7-douyin-columns-');
+    // 故意用与实体无关的目录与文件名：抖音的归属只看列名，不看文件名与所在目录
+    const target = 'source/live/目录名与实体无关/2026-10/文件名不含实体_抖音.csv';
+    ensureDir(dirname(join(root, target)));
+    writeCsv(join(root, target), [renamedHeader, dataRow]);
+    const index = (await buildIndex({ dataRoot: root })) as unknown as IndexLike;
+    const douyin = (index.portraits ?? []).find((portrait) => portrait.platformLabels['douyin']);
+    assert.ok(douyin, '改列名后的抖音画像应被扫描识别');
+    assert.equal(
+      douyin?.entityId,
+      '演示账号2',
+      '抖音实体应取自第 3／4 列列名（→ 演示账号2），而不是模板演示实体「演示账号1」或文件名／目录（R2-1：不改列名会全部静默归到演示实体）',
+    );
+    assert.equal(douyin?.month, '2027-01~2027-12', '抖音月份应取自列名前缀「2701-2712」（R2-1）');
+  });
+
+  test('DT7/R2-3 抖音画像存成 XLSX：索引构建报错中断（表目录「报错中断」措辞的行为依据）', async () => {
+    const workbook = await readCommittedWorkbook();
+    const sheet = workbook.getWorksheet('抖音画像长表');
+    assert.ok(sheet, '模板缺少「抖音画像长表」sheet');
+    const { header, dataRow } = exampleAsDataRow('抖音画像长表', sheetMatrix(sheet));
+    const root = makeTempDir('uom-dt7-douyin-xlsx-');
+    const target = 'source/live/演示账号1/2026-10/2601-2612演示账号1_抖音.xlsx';
+    ensureDir(dirname(join(root, target)));
+    await writeXlsx(join(root, target), 'Sheet1', [header, dataRow]);
+    await assert.rejects(
+      buildIndex({ dataRoot: root }),
+      /抖音画像/,
+      '抖音存成 XLSX 会让 buildIndex 抛错中断（不是静默跳过）——表目录／README 须如实写「报错中断」（R2-3）',
+    );
+  });
+
+  test('DT7/R2-4 反向：京东文件名缺月份与实体名时静默错挂（fileNameRule 要求带月份与实体名的依据）', async () => {
+    const workbook = await readCommittedWorkbook();
+    const sheet = workbook.getWorksheet('京东画像表');
+    assert.ok(sheet, '模板缺少「京东画像表」sheet');
+    const { header, dataRow } = exampleAsDataRow('京东画像表', sheetMatrix(sheet));
+    const root = makeTempDir('uom-dt7-jd-name-');
+    const target = 'source/tmall/演示店铺/2026-10/画像_京东.xlsx';
+    ensureDir(dirname(join(root, target)));
+    await writeXlsx(join(root, target), 'Sheet0', [header, dataRow]);
+    const index = (await buildIndex({ dataRoot: root })) as unknown as IndexLike;
+    const jd = (index.portraits ?? []).find((portrait) => portrait.platformLabels['jd']);
+    assert.ok(jd, '不合规文件名仍按后缀识别为京东（后缀优先于目录）');
+    assert.equal(
+      jd?.entityId,
+      '画像',
+      '文件名缺实体名时实体被静默错挂为文件名残留（「画像」）且不报错——fileNameRule 因此要求「<起止年月><实体名>_京东.xlsx」（R2-4）',
+    );
+    assert.equal(jd?.month, '', '文件名缺月份时月份为空（不猜测、不插补）');
   });
 });

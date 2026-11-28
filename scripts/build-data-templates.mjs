@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * 数据模板包生成器（变更 `openspec/changes/data-templates/`；复核修单按
- * spec §4 重做版式——review.md 阻断 B1–B4／应修 R-1）。
+ * spec §4 重做版式——review.md 阻断 B1–B4／应修 R-1；第二轮应修 R2-1～R2-4：
+ * 抖音列名规则写清三处、京东示例维度、抖音 XLSX 后果如实、京东／天猫文件名带
+ * 月份与实体名——review-round2.md）。
  *
  * 从代码契约装配 `templates/数据模板.xlsx`：
  * - A 组 12 张新表：表头与必需性取自 `packages/core/src/normalize/catalog/tables.ts`
@@ -113,7 +115,12 @@ const PRODUCT_EXAMPLE_ROWS = [
 
 /** C 组画像 sheet 的逐列必需性。 */
 const PORTRAIT_REQUIREMENT_ROWS = {
-  douyin: ['必需（文本：六统一维度之一）', '必需（文本）', '必需（占比：含%则除以100）', '可选（TGI 缺失留空，不要填 0）'],
+  douyin: [
+    '必需（文本：六统一维度之一）',
+    '必需（文本）',
+    '必需（占比：含%则除以100）；列名须为「<起止年月><实体名>-占比」——实体名与月份取自该列名',
+    '可选（TGI 缺失留空，不要填 0）；列名须为「<起止年月><实体名>-tgi」，与占比列同实体同月份',
+  ],
   jd: ['必需（文本）', '必需（文本）', '必需（占比：已是小数，0.5＝50%）', '可选（TGI 缺失留空，不要填 0）'],
   tmall: ['必需（文本）', '必需（文本）', '必需（占比：含%则除以100）'],
 };
@@ -262,6 +269,8 @@ export async function templateBlueprint() {
       label: spec.label,
       target: spec.targetDirs,
       fileNameRule: spec.fileNameRule,
+      // R2-1：抖音的列名硬规则（实体与月份取自列名）随契约进「表目录」与「列说明」
+      headerRule: spec.headerRule,
       saveFormats:
         spec.sheetName === '—（CSV 无 sheet）'
           ? spec.saveFormat
@@ -341,7 +350,7 @@ export async function templateBlueprint() {
     rows: catalogSheets.map((sheet) => [
       sheet.label,
       sheet.name,
-      `${sheet.target}；${sheet.fileNameRule}`,
+      `${sheet.target}；${sheet.fileNameRule}${sheet.headerRule ? `；${sheet.headerRule}` : ''}`,
       sheet.saveFormats,
       sheet.requirement,
       sheet.unlocks,
@@ -376,6 +385,7 @@ export async function templateBlueprint() {
       '本模板包由代码契约生成：npm run templates:build（先 npm run build）。表头不要手改；契约改动后重新生成并提交（防漂移测试会做全量比对）。',
       '第 1 步 找表：在「表目录」sheet 找到要提供的表，看清「放到哪（含文件名规则）」「允许格式（含 sheet 名要求）」「必需性」「解析器」四列。',
       '第 2 步 填数：打开对应数据 sheet——第 1 行是表头（不要改），第 2 行是合成示例（高亮，行尾标「填写前删除本行」）；删除第 2 行示例，从第 2 行起填入自己的数据。',
+      `${legacy.DOUYIN_HEADER_RULE}（列名在数据 sheet 第 1 行改，填数前先改好）`,
       '第 3 步 另存：把该 sheet 单独另存为「表目录」写的格式与文件名（文件名规则必须精确遵守：如京东须以 _京东.xlsx 结尾且 sheet 名为 Sheet0、天猫 sheet 名为 明细、抖音仅 CSV；A 组散表 CSV 或 XLSX 均可），放到「放到哪」写的目录。不要把多张表合并在一个文件里。',
       '第 4 步 声明：数据时间范围声明填在 data/README.md 的「数据时间范围声明」表（见「时间范围声明」sheet），不是单独文件；HTML 注释占位符里的内容视为未填写。',
       '示例数据全部为合成演示：款号 SYN-…、店铺 D00001 演示账号1／D00002 演示账号2、品牌「演示品牌」、画像标签用通用枚举值；不含任何真实业务数据。',
