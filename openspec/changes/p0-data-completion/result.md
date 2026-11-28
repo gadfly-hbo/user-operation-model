@@ -18,7 +18,7 @@
 | DC-6 | 文档 | 规则文档与 MCP 说明同步 | **完成** | `docs/normalize-rules.md` §12、`docs/mcp-usage.md`、`data/README.md` |
 | DC-7 | 验证 | 阶段一全量检查 | **完成** | §5 检查结果 |
 | DC-8 | 复核 | 非作者独立复核 | **完成** | 报告见 [review-stage1.md](review-stage1.md)：阻断 0、应修 F1–F4、建议 S1–S2；F1–F3 与 S1–S2 已按意见修正（见 §7-5），F4 待用户确认 |
-| DC-9 | 交付 | PR、CI、获授权 squash 合并 | **未开始（本轮只提交分支，不 push）** | — |
+| DC-9 | 交付 | PR、CI、获授权 squash 合并 | **完成** | PR #5；CI 两项全绿（校验／数据不出网守卫）；用户授权后 squash 合并 `main` @ `ac0072f`；远端与本地分支已删（删前核验 `git diff work/p0-data-completion origin/main` 为空） |
 | DC-10 | 阶段二 | 真实数据接入验证 | **NOT_RUN**（数据未到位） | §6 |
 
 ---
@@ -126,6 +126,8 @@ RED 阶段的失败项举例（core）：`漏斗表应被接入索引`（`index.
 | 断网检查 | `npm run offline-check` | **PASS**（守卫自检 13 个出网入口全部被拦截并归因；17 工具 9 就绪 / 8 data-not-ready / 0 意外、**出网尝试 0**；工具1 演示报告 PASS。参考数据报告未跑——未设 `UOM_REFERENCE_ROOT`，见 §5-1） |
 | 阶段二验收 DC12–DC16 | — | **NOT_RUN**（真实数据未到位） |
 | 独立复核 | [review-stage1.md](review-stage1.md) | **完成**（SDD·TDD 独立复核者，未参与本候选）：阻断 0、应修 F1–F4、建议 S1–S2；变异 6/6 KILLED；真实数据下与 main 逐字一致。F1–F4 与 S1–S2 均已处置（F4 由用户 2026-11-27 拍板追认现状并同步规格措辞，见 §7-1、§7-5） |
+| CI（PR #5） | GitHub Actions `Check` | **PASS**（`校验` success、`数据不出网守卫` success；head `507098f`） |
+| 合并 | 用户授权 squash | **完成**：`main` @ `ac0072f`；远端／本地 `work/p0-data-completion` 已删，删前内容等价核验为空 |
 
 ### 5-1 检查输出摘要
 
