@@ -112,3 +112,16 @@ openspec/changes/foundation-period-model/**
 - **SA-12 判据修正**：「`match-results.json` 除 `generatedAt` 与 `configVersion` 外逐字节一致」对演示报告不成立——SA-06 把相似度改为只在公共标签的重归一化分布上计算后，合成演示数据里商品与渠道的策略人群标签集合本就不同，且 `configVersion` 随 SA-06 递增，逐字节一致与 SA-06 直接相抵触。判据改为**「不变或逐单元可解释」**：重新生成演示报告入库，由可重复比对脚本（`packages/tool1-channel-match/scripts/demo-equivalence.mjs`）证明 48 单元中 28 不变、20 变化且全部只有 `strategy_segment` 一维、每个变化维度都带被排除的单侧标签（0 个无法解释）。
 - **U6 反转**：「站点演示报告不重新生成」改为「重新生成并入库」——理由同上：SA-06 落地后入库报告已与内核口径不一致，口径一致优先于避免 diff（`site/web/tool1-report.html` 本次允许改）。
 - **SA-03 增补「`month` 入参校验」与「`list_channels` 覆盖规则」**：验收实测发现 `selectPortrait` 把区间标签（如 `2024-07~2025-06`）当 `month` 也按重叠匹配放行、`2026-13` 只是静默返回 `not-found`，与规格中 `month` 的自然月（`YYYY-MM`）定义不符；`list_channels({ month })` 用标签字面相等，导致区间／年份画像永远匹配不上任何自然月。修正：非法 `month` 显式拒绝（core 返回 `invalid-month`、MCP 返回 `invalid-argument`、工具1 命令行非零退出且不生成产物），`list_channels` 改用与 `selectPortrait` 同源的覆盖规则（exact＞window＞year＞unknown）判断「该月有画像」。
+
+## v0.3（2026-11-28 独立复核后修正）
+
+独立复核（`.local/review-slice-a/review.md`，结论 PASS 附带条件）后由主 agent 发单修正，只追加，不改上方原文。逐条理由：
+
+- **允许路径增 `packages/core/src/portrait/types.ts`**：SA-01 把期间写进画像必需该类型上的可选 `period` 字段，属类型级必需改动，原清单遗漏（复核应修-6a），本次追认。
+- **SA-04 扩展到渠道经营指标按月**：R-2「档案按月份展开」渠道侧不能例外，`ChannelRecord.performance` 同步改为 `Record<月份, …>`、空月归 `unknown`（复核建议 3 升级为应修）。
+- **`month` 校验覆盖所有接受该参数的工具**：`get_brand_portrait`、`get_competitor_portrait`、`get_recency_distribution`、`get_channel_flow_matrix`、`get_diagnosis` 一并先校验再查数据（复核应修-6b；`get_retention_cohort.cohortMonth` 参数名非 month、语义不同，仍不纳入，见 result.md 偏差）。
+- **`get_competitor_portrait` 的 month 改为与其它工具同源的覆盖规则**：年份标签改为全年区间后，字面相等使该工具永远无法用 month 命中年份画像；无月份竞品画像作为最低层保留并标 `match: "unknown"`（复核应修-6b／建议 10 的该工具部分）。
+- **`parsePeriod` 的 YYMM 优先于四位年份**：归一化规则 §2.1 规定 `2610`→`2026-10`，四位数字先按 YYMM 解（月份 01–12 合法才算），否则按四位年份解且年份限定 1900–2100；`periodCovers` 对非自然月入参一律 false（复核建议 9）。
+- **无月份画像在各工具间统一为「最低层可用」**：与 `selectPortrait`／`list_channels` 同口径，带 month 的 `get_product_dossier`／`search_by_tag`／`get_portrait_aggregate`／`get_competitor_portrait` 不再把无月份画像排除，命中带 `match: "unknown"`（复核建议 2 升级为应修；同一款此前会出现 portrait 有结果而 dossier 报 month-mismatch）。
+- **歧义与缺失提示的可用期间不得是入参校验拒绝的值**：hint 按 `selection.reason` 分支（平台歧义提示传 platform），单月标签直接列为可用月份，区间／年份标签写「须为落在该期间内的自然月」（复核应修-1、应修-2）。
+- **`platform: ''` 视为未指定、带首尾空白的 `month` 按规范月查找**：core 公共 API 与 MCP 层判定一致（复核应修-3、应修-4）。
