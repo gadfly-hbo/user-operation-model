@@ -66,6 +66,8 @@ async function createHintsDataRoot(): Promise<string> {
     ['款号', '商品品牌', '年份', '中类', '小类', '吊牌价', '天猫id', '年龄段', '商品定位'],
     ['SPU-001', '演示品牌', '2026', '短袖T恤', 'T恤', '199', '100001', '18-24岁', 'ACCESS'],
     ['SPU-003', '演示品牌', '2026', '短袖T恤', 'T恤', '299', '100003', '18-24岁', 'ACCESS'],
+    ['SPU-004', '演示品牌', '2026', '短袖T恤', 'T恤', '399', '100004', '18-24岁', 'ACCESS'],
+    ['SPU-005', '演示品牌', '2026', '短袖T恤', 'T恤', '499', '100005', '18-24岁', 'ACCESS'],
   ]);
   await writeSheet(join(domains, '02_渠道信息', '渠道店铺宽表.xlsx'), [
     ['渠道品牌', '一级渠道', '店铺编码', '店铺', '平台', '渠道类型', '渠道等级', '城市', '门店状态', '开店时间'],
@@ -73,6 +75,9 @@ async function createHintsDataRoot(): Promise<string> {
     ['演示品牌', '内容渠道', 'D00004', '演示账号4', '抖音', '抖音', '核心店', '上海', '营业', '2024-01-01'],
     ['演示品牌', '内容渠道', 'D00005', '演示账号5', '天猫', '天猫', '核心店', '上海', '营业', '2024-01-01'],
     ['演示品牌', '内容渠道', 'D00006', '演示账号6', '抖音', '抖音', '核心店', '上海', '营业', '2024-01-01'],
+    ['演示品牌', '内容渠道', 'D00007', '演示账号7', '抖音', '抖音', '核心店', '上海', '营业', '2024-01-01'],
+    ['演示品牌', '内容渠道', 'D00008', '演示账号8', '抖音', '抖音', '核心店', '上海', '营业', '2024-01-01'],
+    ['演示品牌', '内容渠道', 'D00009', '演示账号9', '抖音', '抖音', '核心店', '上海', '营业', '2024-01-01'],
   ]);
 
   const genderRows = (columnPrefix: string, male: string): string[][] => [
@@ -108,6 +113,38 @@ async function createHintsDataRoot(): Promise<string> {
 
   // SPU-003：只有无月份画像（建议 2 升级：带 month 查询仍可用）
   writeCsv(join(douyinDir, '款号SPU-003_抖音.csv'), genderRows('SPU-003', '70.00%'));
+
+  // SPU-004：两份无月份画像、平台不同（第二轮复核 N2 · aggregate 成员歧义的 months=[] 形态）
+  writeCsv(join(douyinDir, '款号SPU-004_抖音.csv'), genderRows('SPU-004', '75.00%'));
+  await writeSheet(join(tmallDir, '款号SPU-004_天猫.xlsx'), [
+    ['标签类型', '一级标签(标签值)', '占比'],
+    ['预测性别', '男', '25.00%'],
+    ['预测性别', '女', '75.00%'],
+  ]);
+
+  // SPU-005：无月份 + 2026-10、同平台（第二轮复核 N2 · C4 的商品侧形态）
+  writeCsv(join(douyinDir, '款号SPU-005_抖音.csv'), genderRows('SPU-005', '70.00%'));
+  writeCsv(join(douyinDir, '2026-10_款号SPU-005_抖音.csv'), genderRows('2026-10SPU-005', '60.00%'));
+
+  // 演示账号7（第二轮复核 N2 · C3）：两份无月份画像、平台不同、不带 month
+  writeCsv(join(douyinDir, '演示账号7画像数据_抖音.csv'), genderRows('演示账号7', '40.00%'));
+  await writeSheet(join(tmallDir, '演示账号7画像数据_天猫.xlsx'), [
+    ['标签类型', '一级标签(标签值)', '占比'],
+    ['预测性别', '男', '35.00%'],
+    ['预测性别', '女', '65.00%'],
+  ]);
+
+  // 演示账号8（第二轮复核 N2 · C4）：无月份 + 2026-10、同平台、不带 month
+  writeCsv(join(douyinDir, '演示账号8画像数据_抖音.csv'), genderRows('演示账号8', '40.00%'));
+  writeCsv(join(douyinDir, '2026-10_演示账号8画像数据_抖音.csv'), genderRows('2026-10演示账号8', '30.00%'));
+
+  // 演示账号9（第二轮复核 N2 · C5）：无月份（抖音）+ 2026-10（天猫）、不带 month
+  writeCsv(join(douyinDir, '演示账号9画像数据_抖音.csv'), genderRows('演示账号9', '40.00%'));
+  await writeSheet(join(tmallDir, '2026-10_演示账号9画像数据_天猫.xlsx'), [
+    ['标签类型', '一级标签(标签值)', '占比'],
+    ['预测性别', '男', '45.00%'],
+    ['预测性别', '女', '55.00%'],
+  ]);
 
   // 竞品：一份年份画像（tmall xlsx，月份取自文件名）+ 一份无月份画像（抖音 csv）
   await writeSheet(join(competitorDir, '2024_竞品甲画像数据_天猫.xlsx'), [
@@ -242,5 +279,119 @@ describe('复核建议 2 升级 · 无月份画像在带 month 的各工具间�
     assert.equal(payload.ok, true, `聚合应纳入无月份画像：${JSON.stringify(payload.error)}`);
     const data = payload.data as { entityType: string };
     assert.equal(data.entityType, 'category');
+  });
+});
+
+describe('第二轮复核 N1 · month 入参在 MCP 边界层严格校验（run5）', () => {
+  test('dossier：尾部空白的 month → invalid-argument，不得静默返回空指标（D2 形态）', async () => {
+    // SPU-003 有无月份画像：修前该入参返回 ok 且画像命中、经营指标静默落空
+    const payload = await call('get_product_dossier', { spu: 'SPU-003', month: '2026-10 ' });
+    assert.equal(payload.ok, false, `带空白 month 必须在边界层拒绝：${JSON.stringify(payload)}`);
+    assert.equal(payload.error?.kind, 'invalid-argument');
+    assert.ok(
+      payload.error?.message.includes('month 必须是 YYYY-MM，收到 2026-10 '),
+      `message 应沿用既有措辞并回显原值：${payload.error?.message}`,
+    );
+  });
+
+  test('dossier：前导空白（D3 形态）与 YYMM（D4 形态）同样拒绝', async () => {
+    for (const month of [' 2026-09', '2610']) {
+      const payload = await call('get_product_dossier', { spu: 'SPU-003', month });
+      assert.equal(payload.ok, false, `month=${month} 应被拒绝：${JSON.stringify(payload)}`);
+      assert.equal(payload.error?.kind, 'invalid-argument', `month=${month} 的错误类型`);
+    }
+  });
+
+  test('渠道画像入口同样先校验再查数据（2610 修前被当 2026-10 命中）', async () => {
+    const payload = await call('get_channel_portrait', { channelId: 'D00001', month: '2610' });
+    assert.equal(payload.ok, false, `YYMM 写法应被拒绝：${JSON.stringify(payload)}`);
+    assert.equal(payload.error?.kind, 'invalid-argument');
+  });
+});
+
+describe('第二轮复核 N2 · 无月份画像形态的歧义提示（run5）', () => {
+  test('C3：两份无月份画像、不同平台、不带 month → 提示传 platform，不误指 month', async () => {
+    const payload = await call('get_channel_portrait', { channelId: 'D00007' });
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error?.kind, 'ambiguous');
+    assert.ok(payload.error?.message.includes('douyin'), 'message 应列出平台');
+    assert.ok(payload.error?.message.includes('tmall'), 'message 应列出平台');
+    assert.ok(
+      !payload.error?.message.includes('在  有多平台'),
+      `无月份形态不得写成「在某月有多平台画像」：${payload.error?.message}`,
+    );
+    assert.ok(payload.error?.hint?.includes('传 platform'), `应提示传 platform：${payload.error?.hint}`);
+    assert.ok(payload.error?.hint?.includes('可选平台：douyin、tmall'));
+    assert.ok(
+      !payload.error?.hint?.includes('没有可作为 month 的画像期间'),
+      `months 为空时不得误导为「传 month」：${payload.error?.hint}`,
+    );
+  });
+
+  test('C3b：按提示传 platform 即可命中（无月份画像按平台过滤后唯一）', async () => {
+    const payload = await call('get_channel_portrait', { channelId: 'D00007', platform: 'douyin' });
+    assert.equal(payload.ok, true, `传 platform 应消歧：${JSON.stringify(payload.error)}`);
+  });
+
+  test('C4：无月份 + 2026-10、同平台、不带 month → 提示传 month（旧提示传 platform 是死循环）', async () => {
+    const payload = await call('get_channel_portrait', { channelId: 'D00008' });
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error?.kind, 'ambiguous');
+    assert.ok(payload.error?.hint?.includes('传 month'), `单平台形态应提示传 month：${payload.error?.hint}`);
+    assert.ok(
+      payload.error?.hint?.includes('可用月份：2026-10'),
+      `hint 应列出可用的单月标签：${payload.error?.hint}`,
+    );
+    assert.ok(
+      !payload.error?.hint?.includes('platform'),
+      `可选平台只有一个时不得提示传 platform：${payload.error?.hint}`,
+    );
+  });
+
+  test('C4b：照 month 提示传 2026-10 命中 exact；照旧 platform 提示仍是歧义（死循环留存证明）', async () => {
+    // 商品侧形态（dossier 的 portraits 带 match 字段）
+    const withMonth = await call('get_product_dossier', { spu: 'SPU-005', month: '2026-10' });
+    assert.equal(withMonth.ok, true, `传 month 应命中 exact 层：${JSON.stringify(withMonth.error)}`);
+    const data = withMonth.data as { portraits: { month: string; match?: string }[] };
+    // dossier 按「覆盖该月的全部画像」列出：2026-10 exact + 无月份 unknown 两层都在
+    assert.equal(data.portraits.length, 2);
+    const exact = data.portraits.find((portrait) => portrait.match === 'exact');
+    assert.equal(exact?.month, '2026-10', 'exact 层在列，说明传 month 能按月取到该画像');
+
+    const withPlatform = await call('get_channel_portrait', { channelId: 'D00008', platform: 'douyin' });
+    assert.equal(withPlatform.ok, false, '只传 platform 无法消歧（同平台两份画像）');
+    assert.equal(withPlatform.error?.kind, 'ambiguous');
+  });
+
+  test('C5：无月份 + 2026-10、不同平台、不带 month → 提示传 month，message 不说「在某月有多平台画像」', async () => {
+    const payload = await call('get_channel_portrait', { channelId: 'D00009' });
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error?.kind, 'ambiguous');
+    assert.ok(payload.error?.hint?.includes('传 month'), `混合形态应提示传 month：${payload.error?.hint}`);
+    assert.ok(
+      !payload.error?.message.includes('有多平台画像'),
+      `候选含无月份画像时不得说「在某月有多平台画像」：${payload.error?.message}`,
+    );
+  });
+
+  test('S2：aggregate 成员全无月份（months=[]）的提示可操作，不再说「没有可作为 month 的画像期间」', async () => {
+    const payload = await call('get_portrait_aggregate', { level: 'category', key: '短袖T恤' });
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error?.kind, 'ambiguous');
+    assert.ok(
+      !payload.error?.hint?.includes('没有可作为 month 的画像期间'),
+      `months 为空时该说法误导（传任意月份即可聚合）：${payload.error?.hint}`,
+    );
+    assert.ok(
+      payload.error?.hint?.includes('任意月份'),
+      `hint 应说明传任意月份即可：${payload.error?.hint}`,
+    );
+
+    const withMonth = await call('get_portrait_aggregate', {
+      level: 'category',
+      key: '短袖T恤',
+      month: '2026-10',
+    });
+    assert.equal(withMonth.ok, true, `照提示传任意月份即可聚合：${JSON.stringify(withMonth.error)}`);
   });
 });

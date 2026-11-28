@@ -348,6 +348,36 @@ describe('验收修正一 · --month 入参必须是自然月', () => {
   });
 });
 
+describe('第二轮复核 N1 · month 入参严格校验（run5）', () => {
+  test('带空白／YYMM 写法一律拒绝，不生成数据集（单价与指标不得静默落空）', async () => {
+    const root = await buildDataRoot();
+    for (const month of ['2026-10 ', ' 2026-10', '2610']) {
+      await assert.rejects(
+        () => buildDataRootDataset({ dataRoot: root, month }),
+        /month 必须是 YYYY-MM/,
+        `month=${month} 应在边界层拒绝（T1/T3 形态）`,
+      );
+    }
+  });
+
+  test('参考数据路径同样拒绝非法写法', () => {
+    const root = mkdtempSync(join(tmpdir(), 'uom-ref-invalid-month-'));
+    mkdirSync(join(root, '直播', '演示账号A'), { recursive: true });
+    douyinPortrait(join(root, '直播', '演示账号A', '演示账号A直播成交2610画像数据.csv'), '演示账号A');
+    writeCsv(join(root, '商品数据表.csv'), [
+      ['款号', '商品名称', '零售额', '零售量', '件单价'],
+      ['SPU-9001', '演示商品一', '12020', '40', '300'],
+    ]);
+    for (const month of ['2026-10 ', '2610']) {
+      assert.throws(
+        () => buildReferenceDataset({ root, month }),
+        /month 必须是 YYYY-MM/,
+        `month=${month} 应在边界层拒绝`,
+      );
+    }
+  });
+});
+
 describe('验收修正二 · 可用月份列表恢复为自然月', () => {
   test('indexMonths：单月取本身，区间／年份取结束月，去重升序', async () => {
     const root = await buildPeriodDataRoot();

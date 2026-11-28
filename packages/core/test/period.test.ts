@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import {
+  isNaturalMonth,
   normalizeTmallPortrait,
   parseFileNameEntity,
   parsePeriod,
@@ -143,9 +144,27 @@ describe('复核修正 · 四位数字与 periodCovers 入参（run4）', () => 
     assert.equal(periodCovers(year, '2024-1'), false, '"2024-1" 不是任何可识别期间');
     assert.equal(periodCovers(parsePeriod('2026-10'), '2026-1'), false);
     assert.equal(periodCovers(parsePeriod('2026-10'), '2026-13'), false);
-    assert.equal(periodCovers(parsePeriod('2026-10'), '2610'), true,
-      '2610 按 §2.1 规范为 2026-10，与该月相等');
+    assert.equal(periodCovers(parsePeriod('2026-10'), '2610'), false,
+      '第二轮复核 N1 收紧：YYMM 是画像标签写法，不是 month 入参写法，periodCovers 一律 false');
     assert.equal(periodCovers(parsePeriod('2026-10'), ''), false);
+    assert.equal(periodCovers(parsePeriod('2026-10'), '2026-10 '), false,
+      '不裁首尾空白：带空白的写法不是自然月入参');
+  });
+});
+
+describe('第二轮复核 N1 · 自然月入参严格判断（run5）', () => {
+  test('isNaturalMonth 只接受恰好 YYYY-MM（01–12），不裁空白、不接受 YYMM', () => {
+    assert.equal(isNaturalMonth('2026-10'), true);
+    assert.equal(isNaturalMonth('2025-01'), true);
+    assert.equal(isNaturalMonth('2026-12'), true);
+    assert.equal(isNaturalMonth('2026-10 '), false, '尾部空白不裁');
+    assert.equal(isNaturalMonth(' 2026-10'), false, '前导空白不裁');
+    assert.equal(isNaturalMonth('2610'), false, 'YYMM 不再被当作 month 入参');
+    assert.equal(isNaturalMonth('2026-13'), false);
+    assert.equal(isNaturalMonth('2026-1'), false);
+    assert.equal(isNaturalMonth('2024'), false, '年份标签不是 month 入参');
+    assert.equal(isNaturalMonth('2025-07~2026-06'), false);
+    assert.equal(isNaturalMonth(''), false);
   });
 });
 
