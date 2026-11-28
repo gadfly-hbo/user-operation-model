@@ -486,18 +486,47 @@ describe('经营指标接入（DC09）', () => {
     assert.equal(product?.price?.actualUnitPrice, undefined, '缺零售量不推出成交单价');
   });
 
-  test('渠道经营指标填充渠道档案，缺失字段不插补', async () => {
+  test('渠道经营指标按月键控填充渠道档案，缺失字段不插补', async () => {
     const root = await createP0DataRoot({ include: ['tables/channel-performance.csv'] });
     const index = await buildIndex({ dataRoot: root });
     const channel = index.channels.find((item) => item.channelId === 'D00001');
-    assert.ok(channel?.performance);
-    assert.equal(channel!.performance!.gmv, 50000);
-    assert.equal(channel!.performance!.orderCount, 200);
-    assert.ok(Math.abs((channel!.performance!.conversionRate ?? 0) - 0.03) < 1e-9);
+    assert.ok(channel?.performance?.['2026-01'], '指标应落在该月键下（复核修正·R-2 渠道侧）');
+    assert.equal(channel!.performance!['2026-01']!.gmv, 50000);
+    assert.equal(channel!.performance!['2026-01']!.orderCount, 200);
+    assert.ok(Math.abs((channel!.performance!['2026-01']!.conversionRate ?? 0) - 0.03) < 1e-9);
 
     const second = index.channels.find((item) => item.channelId === 'D00002');
-    assert.ok(second?.performance);
-    assert.equal(second!.performance!.grossMargin, undefined, '缺失的毛利率不插补');
+    assert.ok(second?.performance?.['2026-01']);
+    assert.equal(second!.performance!['2026-01']!.grossMargin, undefined, '缺失的毛利率不插补');
+  });
+
+  test('渠道经营指标按月展开：多月份全保留、空月归 unknown、不再取最新月份（复核修正）', async () => {
+    const root = await createP0DataRoot({
+      include: ['tables/channel-performance.csv'],
+      tables: {
+        'tables/channel-performance.csv': [
+          ['店铺编码', '月份', '成交额', '成交件数', '转化率', '客单价', '毛利率'],
+          ['D00001', '2026-01', '50000', '200', '3.0%', '250', '42%'],
+          ['D00001', '2026-02', '60000', '220', '3.2%', '273', '40%'],
+          ['D00002', '', '7000', '30', '2.0%', '233', ''],
+        ],
+      },
+    });
+    const index = await buildIndex({ dataRoot: root });
+    const channel = index.channels.find((item) => item.channelId === 'D00001');
+    assert.deepEqual(
+      Object.keys(channel?.performance ?? {}).sort(),
+      ['2026-01', '2026-02'],
+      '渠道经营指标按月份展开，不塌缩成最新月',
+    );
+    assert.equal(channel?.performance?.['2026-02']?.gmv, 60000);
+    const second = index.channels.find((item) => item.channelId === 'D00002');
+    assert.deepEqual(Object.keys(second?.performance ?? {}), ['unknown'], '空月份归入 unknown 键');
+    assert.equal(second?.performance?.unknown?.gmv, 7000);
+    assert.ok(
+      !index.issues.some((issue) => issue.message.includes('取最新月份')),
+      '不再产生「档案取最新月份」的问题记录',
+    );
   });
 });
 

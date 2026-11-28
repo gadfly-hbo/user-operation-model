@@ -708,11 +708,17 @@ function applyProductPerformance(
   }
 }
 
-/** 填充渠道经营指标。 */
+/**
+ * 填充渠道经营指标（复核修正：R-2「档案按月份展开」，渠道侧不例外）。
+ *
+ * - 按「月份 → 指标」键控，多月份**全部保留**，不再取最新月份、不再记塌缩 issue
+ * - 源行月份为空归入 `unknown` 键（U3，与商品侧一致）
+ * - 缺失字段保持缺失，**不插补**
+ */
 function applyChannelPerformance(
   channels: ChannelRecord[],
   entries: ChannelPerformanceEntry[] | undefined,
-  issues: NormalizationIssue[],
+  _issues: NormalizationIssue[],
 ): void {
   if (!entries || entries.length === 0) return;
   const byChannel = new Map<string, ChannelPerformanceEntry[]>();
@@ -725,23 +731,18 @@ function applyChannelPerformance(
   for (const channel of channels) {
     const rows = byChannel.get(channel.channelId);
     if (!rows || rows.length === 0) continue;
-    const latest = pickLatest(rows);
-    if (rows.length > 1) {
-      issues.push({
-        kind: 'parse-error',
-        severity: 'warning',
-        sourceLabel: channel.channelId,
-        message: `渠道 ${channel.channelId} 的经营指标覆盖 ${rows.length} 个月份，档案取最新月份 ${latest.month ?? '未知'}`,
-      });
+    const performance: NonNullable<ChannelRecord['performance']> = {};
+    for (const row of rows) {
+      const key = row.month && row.month.trim() !== '' ? row.month.trim() : 'unknown';
+      performance[key] = {
+        ...(row.gmv !== undefined ? { gmv: row.gmv } : {}),
+        ...(row.orderCount !== undefined ? { orderCount: row.orderCount } : {}),
+        ...(row.conversionRate !== undefined ? { conversionRate: row.conversionRate } : {}),
+        ...(row.aov !== undefined ? { aov: row.aov } : {}),
+        ...(row.grossMargin !== undefined ? { grossMargin: row.grossMargin } : {}),
+      };
     }
-    channel.performance = {
-      ...(latest.month ? { month: latest.month } : {}),
-      ...(latest.gmv !== undefined ? { gmv: latest.gmv } : {}),
-      ...(latest.orderCount !== undefined ? { orderCount: latest.orderCount } : {}),
-      ...(latest.conversionRate !== undefined ? { conversionRate: latest.conversionRate } : {}),
-      ...(latest.aov !== undefined ? { aov: latest.aov } : {}),
-      ...(latest.grossMargin !== undefined ? { grossMargin: latest.grossMargin } : {}),
-    };
+    channel.performance = performance;
   }
 }
 
@@ -773,11 +774,6 @@ function applyProductChannel(
     }
     if (Object.keys(performance).length > 0) product.channelPerformance = performance;
   }
-}
-
-/** 取最新月份的一条（月份相同时取后出现的一条）。 */
-function pickLatest<T extends { month?: string }>(rows: T[]): T {
-  return [...rows].sort((left, right) => (left.month ?? '').localeCompare(right.month ?? '')).at(-1)!;
 }
 
 /**

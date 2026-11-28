@@ -38,8 +38,12 @@ export interface ChannelRecord {
   storeStatus?: string;
   openDate?: string;
   closeDate?: string;
-  /** 渠道经营指标（`data/tables/channel-performance.csv`）。缺失字段不插补。 */
-  performance?: ChannelPerformance;
+  /**
+   * 渠道经营指标（`data/tables/channel-performance.csv`），按月份键控
+   * （复核修正：R-2「档案按月份展开」渠道侧不例外）；源行月份为空归入
+   * `unknown` 键，与商品侧一致。缺失字段不插补。
+   */
+  performance?: Record<string, ChannelPerformance>;
   attributes?: Record<string, string>;
 }
 
@@ -161,9 +165,8 @@ export interface ChannelPerformanceEntry {
   grossMargin?: number;
 }
 
-/** 渠道经营指标（落在渠道档案上）。 */
+/** 渠道经营指标（落在渠道档案的按月键下；月份为空归 `unknown`）。 */
 export interface ChannelPerformance {
-  month?: string;
   gmv?: number;
   orderCount?: number;
   conversionRate?: number;

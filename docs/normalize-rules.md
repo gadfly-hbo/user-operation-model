@@ -570,7 +570,7 @@ Cohort 留存按**指标键**取值（`day30` / `day60` / `day90` / `next_season
 - 商品经营指标 → `ProductDossier.performance`（`售罄率`→`sellThroughRate`、`退货率`→`returnRate`、`退款率`→`refundRate`、`毛利率`→`grossMargin`、`UV`→`uv`、`转化率`→`conversionRate`）
 - 渠道经营指标 → `ChannelRecord.performance`（`成交额`→`gmv`、`成交件数`→`orderCount`、`转化率`→`conversionRate`、`客单价`→`aov`、`毛利率`→`grossMargin`）
 - **缺失字段保持缺失，不插补**
-- 指标与漏斗**按月存取**（切片 A · SA-04，2026-11-28）：`performance`／`funnel`／`channelPerformance` 以月份为键（`Record<月份, …>`），同一款号／渠道多个月的记录全部保留，不再「档案取最新月份、其余记 issue」；源行月份为空时归入键 `unknown`，按静态事实处理
+- 指标与漏斗**按月存取**（切片 A · SA-04，2026-11-28；渠道侧同期跟进，复核修正）：`performance`／`funnel`／`channelPerformance` 以月份为键（`Record<月份, …>`），商品与**渠道**多个月的记录全部保留，不再「档案取最新月份、其余记 issue」；源行月份为空时归入键 `unknown`，按静态事实处理
 - 零售额与零售量齐全时推出**真实成交单价**（`resolveUnitPrice`，按月优先）：该月零售额与零售量均 > 0 → `零售额 ÷ 零售量`；否则主数据 `actualUnitPrice`，否则 `unitPrice`；缺失不插补、不把按月指标写回主数据 `price`
 
 ### 12.10 竞品画像
