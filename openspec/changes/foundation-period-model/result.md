@@ -1,6 +1,6 @@
 # 切片 A · 时间与选择语义 — 结果记录
 
-> 状态：实现收口；独立复核完成（`PASS` 附带条件，`.local/review-slice-a/review.md`），复核应修 1–7 已处理，见文末「验收修正（独立复核后）」；第二轮独立复核完成（`PASS` 附带条件，`.local/review-slice-a/round2/review-round2.md`），其应修 N1／N2／N3 已处理，见文末「第二轮复核后修正（run5）」。**本文不构成整体交付完成的宣称**；最终验收由主 agent 与用户作出。
+> 状态：实现收口；**三轮独立复核均完成，结论均为 `PASS` 附带条件**——第一轮 [review.md](review.md)（候选 `a1ae9ba`），第二轮 [review-round2.md](review-round2.md)（候选 `9e10e31`），第三轮 [review-round3.md](review-round3.md)（候选 `5490659`）。复核应修的处理见文末「验收修正」「第二轮复核后修正」与「专项最终检查与收口」三节；第三轮遗留的记录更正与顺延项以「专项最终检查与收口」一节为准。**本文不构成整体交付完成的宣称**；最终验收由主 agent 与用户作出，push／PR／合并须用户另行授权。
 
 ## 执行信息
 
@@ -172,3 +172,35 @@
 **永久性 `NOT_PROVED`（无法补救，如实保留，累计）**：第一轮已记的 SA-08 `resolveUnitPrice`／`resolveRetailAmount`、SA-04 三例、工具1 侧 SA-03／08／09 集成；第二轮新增 **run4-fix2 组**（hint 按 reason 分支、竞品覆盖规则、无月份画像纳入）的先红后绿时序——判别力由复核变异 R2-M01／M04／M06／M09／M12 独立背书。本轮 run5 三组修正的 RED→GREEN 时序完整。
 
 **本轮门禁**：`npm run check` 647/647（exit 0）；黄金、fidelity、archive-content、docs-links、data-guard、守卫自检与演示报告字节比对见 `green/run5-*.log`。
+
+## 专项最终检查与收口（主 agent，规范 §5.3）
+
+> 写入时机：第三轮独立复核结论之后。候选 `5490659`（基线 `d138592`）。检查范围限本变更及其接缝；不据此宣称未检查的既有实现已合规。主 agent 在该候选上亲跑：`npm run check` 647/647；黄金 G1–G5 与冻结基线逐行一致；fidelity 通过；archive-content、docs-links（145 条）、data-guard 通过；演示报告与入库文件逐字节一致；真实数据前后快照比对「无非预期差异」（证据 `/Users/huangbo/Dev/Projects/user-operation-model/.local/slice-a/accept/`）。
+
+### 第三轮复核遗留的处理
+
+| 项 | 处理 |
+| --- | --- |
+| **R3-1（记录）** | run5 MCP 组的 RED 实为「19 例中 7 例目标断言失败 + 1 例测试代码自身的 `TypeError`（C4b）」，不是上文「第二轮复核后修正」与 `green/run5-final.log` 所写的「8 例全为断言失败、零错误」；C4b 的测试在 RED 之后改写为现状锁定用例，其先红后绿时序记 `NOT_PROVED`（判别力由其余 7 例与第三轮变异 M04／M05a／M09／M10 背书）。**以本节为准**；日志为证据原件，不改写 |
+| 建议 S1–S5 | **主 agent 决定顺延至切片 B1 一并处理，须由用户在授权合并时确认接受**：S1 无月份画像与带月份画像混合、多平台时的 message 措辞（`packages/data-mcp/src/server.ts` 约 127–134）；S2 `packages/core/src/period/select.ts` 约 112–113 的注释仍写「规范化上移到边界层」，与实现（边界层严格拒绝、不规范化）不符；S3 `docs/normalize-rules.md` 年份枚举与 `spec.md` v0.4 漏列 `2000`；S4 `hasMonthless` 在带 `month` 分支缺 core 层断言（第三轮等价变异 M05b 存活）；S5 `isNaturalMonth('0000-01')` 放行属格式校验、与修前一致（备注）。不顺延则另起修单 |
+
+### 六项检查
+
+| 检查项 | 范围与证据 | 发现 | 结论 |
+| --- | --- | --- | --- |
+| 四点原则 | 纯领域重构，不新增环境职责；不新增依赖（`package.json` 与锁文件零改动）；期间解析与画像选择从三处（`match/month.ts`、工具1 挑选函数、core 查询）收成一处并删除原处；MCP 以显式歧义与参数错误取代静默取值，Agent 获得的信息只增不减；提示语可操作 | 无新增必做人工操作 | 通过 |
+| 数据不出网 | 无新增依赖；diff 内无网络调用、无数据文件；`site/web/tool1-report.html` 与合成 fixture 重新生成结果逐字节一致；离线守卫自检 13 入口拦截 | **已知限制**：守卫不拦全局 `fetch`（主 agent 与三轮复核各自实测），「计数 0」只对这 13 个入口成立；源码层已确认无 `fetch`。归切片 C 补守卫 | 通过（含一项已记录限制） |
+| 匹配内核唯一性 | 全仓无第二份评分逻辑或阈值字面量；`packages/core/src/match/config.ts` 只动版本号与注释（权重、价格带、评级、熔断逐字未动）；公共标签口径只在 `index/similarity.ts` 一处，内核、差异、相似款、聚合同源；黄金 G1–G5 三轮复核与主 agent 各自复跑逐字不变 | 无 | 通过 |
+| 背对背隔离 | `packages/core/src/product/catalog/fields.ts` 零改动；`predictionAttributes`／`comparisonOnly` 生成逻辑只随 `schemaVersion` 变一行；既有测试全过 | 无 | 通过 |
+| 模型来源与版本 | `packages/core/src/model/**`、`packages/tool2-portrait-predict/**` 零改动；fidelity 门禁三轮复跑通过，两组冻结数字逐位不变 | 无 | 通过 |
+| 人的操作 | 未新增任何必做动作；`data/README.md` 未改；`month` 入参收紧为 `YYYY-MM`（原先区间标签会被选择器静默接受，不属文档化用法），提示语与 `indexMonths`／`availableMonths` 给出可用的自然月 | 无 | 通过 |
+
+### 结论
+
+**通过（限切片 A 范围）。** 带以下如实保留项，不得表述为整体无保留通过：
+
+- **永久性 `NOT_PROVED`（TDD 先红后绿时序）**：`resolveUnitPrice`／`resolveRetailAmount`；SA-04 三例（漏斗按月、渠道成交空月入 unknown、不再产生取最新月份记录）；工具1 侧 SA-03／08／09 集成；`run4-fix2` 组（hint、竞品覆盖、无月份画像纳入——该组 RED 为 `git stash` 回退实现后重取的事后取证）；run5 的 C4b。测试判别力由三轮复核的变异复现独立背书（三轮共 45 个变异，43 杀死、2 个等价存活）。
+- **`NOT_RUN`**：`npm run offline-check` 端到端段（无数据工作树）；CI（未推送）。
+- **真实数据覆盖面**：现有样本无经营指标／漏斗／成交表，SA-04／05／08／09 的真实数据面 `NOT_PROVED`；唯一进入矩阵的真实匹配对前后各维度分一致（`.local/slice-a/accept/real-unit-structured-diff.json`）。
+- **范围外发现（已登记，归后续切片）**：单品画像文件名带月份前缀时 entityId 保留「款号」前缀（B1）；`deriveActualUnitPrice` 死代码（B1）；同月重复行覆盖无 issue（B1）；`get_retention_cohort.cohortMonth` 未校验（B1）；`get_brand_portrait` 的 `month` 未参与过滤（C）；断网守卫不拦 `fetch`（C）。
+- **过程披露**：本切片由三位实现者分五批完成（单个子代理有轮次上限，第一批到限中止）；主 agent 验收中拦下并退回两处自行发挥（区间标签被当月份放行、工具1 可选月份变成区间标签）；第一轮复核指出主 agent 所写规格 SA-12 的「演示报告逐字节一致」与已拍板的 R-3 相抵触，已以 v0.2 修正节更正。
