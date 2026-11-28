@@ -40,3 +40,14 @@
 - `docs/architecture-review-v1.md` 顶部拍板状态注（第 5 行）仍写「新增待拍板 **R-11、R-12**」，按「不改其它内容」指令未动。
 - `docs/产品讨论稿-v0.2.md` 附录 B 两处注（「待 R-11 裁定」「锚点里的单价是否算业务数据见 §9 Q8」）未动——D13 已使其语义成立，后续文档整理可收口为指向 D13。
 - R-12（字段白名单以工具2 严格清单为准）的代码落实归切片 E。
+
+## 交付回填（主 agent，2026-11-28）
+
+| 项 | 结果 |
+| --- | --- |
+| 用户授权 | 2026-11-28 常设授权（按推荐执行；推送／PR／CI／绿了合并默认授权） |
+| 独立复核 | PASS（应修 1：两处「待拍板」旧注，已修并入库 `review.md`） |
+| 推送 | `docs/r11-anchor-whitelist @ b553026` |
+| PR | [#10](https://github.com/gadfly-hbo/user-operation-model/pull/10) |
+| CI | Check 运行 `46157174978`：两项 `SUCCESS`；`mergeStateStatus` CLEAN |
+| 合并 | squash 合并到 `main @ ad254d1`（`--match-head-commit`）；远端分支已删；本地 `main` 已快进；工作树与本地分支已删（删前核对树与 squash 提交零差异） |
