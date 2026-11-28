@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
+import { buildIndex } from '@uom/core';
 import {
   buildDataRootDataset,
   buildReferenceDataset,
@@ -146,8 +147,7 @@ describe('参考数据 · 只读适配', () => {
   });
 });
 
-describe('data/ 正式路径 · 适配', () => {
-  async function buildDataRoot(): Promise<string> {
+async function buildDataRoot(): Promise<string> {
     const root = mkdtempSync(join(tmpdir(), 'uom-tool1-data-'));
     const domains = join(root, 'domains');
     mkdirSync(join(domains, '02_渠道信息'), { recursive: true });
@@ -176,8 +176,9 @@ describe('data/ 正式路径 · 适配', () => {
       'SPU-9001',
     );
     return root;
-  }
+}
 
+describe('data/ 正式路径 · 适配', () => {
   test('按店铺名关联到渠道画像，按款号关联到单品画像', async () => {
     const root = await buildDataRoot();
     const dataset = await buildDataRootDataset({ dataRoot: root, month: '2026-10' });
@@ -207,9 +208,8 @@ describe('data/ 正式路径 · 适配', () => {
   });
 });
 
-describe('data/ 正式路径 · 期间语义（切片 A）', () => {
-  /** 多月份／多平台／年份画像 + 按月经营指标的合成数据根。 */
-  async function buildPeriodDataRoot(): Promise<string> {
+/** 多月份／多平台／年份画像 + 按月经营指标的合成数据根。 */
+async function buildPeriodDataRoot(): Promise<string> {
     const root = mkdtempSync(join(tmpdir(), 'uom-tool1-period-'));
     const domains = join(root, 'domains');
     const douyinDir = join(domains, '07_人群画像', '抖音');
@@ -289,16 +289,19 @@ describe('data/ 正式路径 · 期间语义（切片 A）', () => {
       ['SPU-9001', 'D00001', '2026-10', '12000', '40'],
     ]);
     return root;
-  }
+}
 
-  test('indexMonths 保留区间与年份字面标签（SA-09），selectedMonth 取最新具体月', async () => {
+describe('data/ 正式路径 · 期间语义（切片 A）', () => {
+  test('索引层 index.months 仍保留字面标签并集（SA-09 不变），selectedMonth 取最新具体月', async () => {
     const root = await buildPeriodDataRoot();
-    const dataset = await buildDataRootDataset({ dataRoot: root });
+    // 报告层 dataset.months 已改自然月（验收修正二）；索引层字面并集由 SA-09 锁定
+    const index = await buildIndex({ dataRoot: root });
     assert.ok(
-      dataset.months.includes('2025-07~2026-06'),
-      `区间标签应按字面保留：${dataset.months.join('、')}`,
+      index.months.includes('2025-07~2026-06'),
+      `索引层应保留区间字面标签：${index.months.join('、')}`,
     );
-    assert.ok(dataset.months.includes('2024-01~2024-12'), '年份标签应按字面保留');
+    assert.ok(index.months.includes('2024-01~2024-12'), '索引层应保留年份字面标签');
+    const dataset = await buildDataRootDataset({ dataRoot: root });
     assert.equal(dataset.selectedMonth, '2026-10');
   });
 
@@ -328,5 +331,32 @@ describe('data/ 正式路径 · 期间语义（切片 A）', () => {
     const channel = dataset.channels.find((item) => item.id === 'D00003');
     assert.ok(channel, '年份画像覆盖 2024-06');
     assert.equal(channel?.portraitMatch, 'year');
+  });
+});
+
+describe('验收修正一 · --month 入参必须是自然月', () => {
+  test('data 路径收到非法 month 直接报错，不生成数据集', async () => {
+    const root = await buildDataRoot();
+    await assert.rejects(
+      () => buildDataRootDataset({ dataRoot: root, month: '2026-13' }),
+      /month 必须是 YYYY-MM，收到 2026-13/,
+    );
+    await assert.rejects(
+      () => buildDataRootDataset({ dataRoot: root, month: '2025-07~2026-06' }),
+      /month 必须是 YYYY-MM/,
+    );
+  });
+});
+
+describe('验收修正二 · 可用月份列表恢复为自然月', () => {
+  test('indexMonths：单月取本身，区间／年份取结束月，去重升序', async () => {
+    const root = await buildPeriodDataRoot();
+    const dataset = await buildDataRootDataset({ dataRoot: root });
+    assert.deepEqual(
+      dataset.months,
+      ['2024-12', '2026-06', '2026-09', '2026-10'],
+      `报告月份列表应是自然月：${dataset.months.join('、')}`,
+    );
+    assert.equal(dataset.selectedMonth, '2026-10', '默认月的计算保持现状');
   });
 });

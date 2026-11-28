@@ -11,6 +11,7 @@ import {
 } from './similarity.js';
 import { parsePeriod, periodCovers } from '../period/parse.js';
 import {
+  portraitLabelCovers,
   portraitMatchKind,
   selectPortrait,
   type PortraitMatchKind,
@@ -98,7 +99,11 @@ export interface ChannelFilter {
   type?: string;
 }
 
-/** 渠道列表。`month` 过滤的是**有画像的月份**。 */
+/**
+ * 渠道列表。`month` 过滤的是**有画像覆盖的月份**（验收修正一）：
+ * 与 `selectPortrait` 同一套覆盖规则（exact＞window＞year＞unknown），
+ * 区间／年份画像覆盖该月即算有画像，不再按标签字面相等。
+ */
 export function listChannels(index: DataIndex, filter: ChannelFilter = {}): ChannelRecord[] {
   // 画像侧的实体标识可能是店铺名，与店铺编码通过渠道宽表关联
   const channelIdByEntityId = new Map<string, string>();
@@ -109,7 +114,10 @@ export function listChannels(index: DataIndex, filter: ChannelFilter = {}): Chan
   const portraitChannels = new Set(
     index.portraits
       .filter((portrait) => portrait.entityType === 'channel')
-      .filter((portrait) => !filter.month || portrait.month === filter.month)
+      .filter(
+        (portrait) =>
+          !filter.month || portraitLabelCovers(portrait.month, filter.month),
+      )
       .map((portrait) => channelIdByEntityId.get(portrait.entityId))
       .filter((id): id is string => Boolean(id)),
   );

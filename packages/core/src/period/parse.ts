@@ -63,6 +63,11 @@ export function parsePeriod(label: string): Period {
   return { kind: 'unknown', label: text };
 }
 
+/** 是否为合法自然月写法 `YYYY-MM`（01–12 月）。查询入参校验的唯一来源（验收修正一）。 */
+export function isNaturalMonth(label: string): boolean {
+  return parsePeriod(label).kind === 'month';
+}
+
 /** 期间是否覆盖给定自然月 `YYYY-MM`。unknown 不覆盖任何月。 */
 export function periodCovers(period: Period, month: string): boolean {
   switch (period.kind) {

@@ -9,6 +9,7 @@ import {
   findChannel,
   findProduct,
   FUNNEL_PHASE_ALIASES,
+  isNaturalMonth,
   listChannels,
   listProducts,
   parsePeriod,
@@ -162,6 +163,39 @@ export function createServer(index: DataIndex): McpServer {
     return hit ? { [month]: hit } : undefined;
   }
 
+  /**
+   * 读取并校验可选 `month` 入参（验收修正一）：必须是自然月 `YYYY-MM`。
+   * 缺省与空串按「未传」处理；非法写法直接返回 `invalid-argument`，不做查找。
+   */
+  const readMonth = (
+    args: Record<string, unknown>,
+  ): { month?: string } | { error: ToolResult<never> } => {
+    if (typeof args.month !== 'string' || args.month === '') return { month: undefined };
+    if (!isNaturalMonth(args.month)) {
+      return {
+        error: err(
+          'invalid-argument',
+          `month 必须是 YYYY-MM，收到 ${args.month}`,
+          '自然月写法示例：2026-10',
+        ),
+      };
+    }
+    return { month: args.month };
+  };
+
+  /** 必填 `month` 入参的读取与校验（验收修正一）：任何非 `YYYY-MM` 写法都拒绝。 */
+  const readRequiredMonth = (args: Record<string, unknown>): string | ToolResult<never> => {
+    const value = typeof args.month === 'string' ? args.month : '';
+    if (!isNaturalMonth(value)) {
+      return err(
+        'invalid-argument',
+        `month 必须是 YYYY-MM，收到 ${value}`,
+        '自然月写法示例：2026-10',
+      );
+    }
+    return value;
+  };
+
   // ── 渠道 ───────────────────────────────────────────────────
   register(
     'list_channels',
@@ -169,13 +203,16 @@ export function createServer(index: DataIndex): McpServer {
       title: '列出渠道',
       description: '列出渠道及其画像覆盖情况。可按月份与渠道类型过滤。',
       inputSchema: z.object({
-        month: z.string().optional().describe('月份 YYYY-MM 或区间；过滤有画像的渠道'),
+        month: z.string().optional().describe('月份 YYYY-MM；过滤该月有画像覆盖的渠道'),
         type: z.string().optional().describe('渠道类型或平台，如「抖音」「天猫」「实体店」'),
       }),
     },
     (args) => {
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const channels = listChannels(index, {
-        ...(typeof args.month === 'string' ? { month: args.month } : {}),
+        ...(month !== undefined ? { month } : {}),
         ...(typeof args.type === 'string' ? { type: args.type } : {}),
       });
       return ok({
@@ -208,7 +245,9 @@ export function createServer(index: DataIndex): McpServer {
     },
     (args) => {
       const channelId = String(args.channelId ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const platform = typeof args.platform === 'string' && args.platform !== '' ? args.platform : undefined;
       const channel = findChannel(index, channelId);
       if (!channel) {
@@ -254,6 +293,8 @@ export function createServer(index: DataIndex): McpServer {
       if (scope !== 'target' && scope !== 'all') {
         return err('invalid-argument', `scope 必须是 target 或 all，收到 ${scope}`);
       }
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
       const unavailable = index.unavailable['get_brand_portrait'];
       if (unavailable) {
         return err('data-not-ready', unavailable, '工具 get_brand_portrait 暂不可用');
@@ -280,7 +321,9 @@ export function createServer(index: DataIndex): McpServer {
     },
     (args) => {
       const brand = String(args.brand ?? '');
-      const month = typeof args.month === 'string' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const portraits = index.competitorPortraits ?? [];
       if (portraits.length === 0) {
         const reason = index.unavailable['get_competitor_portrait'];
@@ -387,7 +430,9 @@ export function createServer(index: DataIndex): McpServer {
     },
     (args) => {
       const spu = String(args.spu ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const product = findProduct(index, spu);
       if (!product) {
         return err('not-found', `商品 ${spu} 不在索引中`, '用 list_products 查看可用商品');
@@ -470,7 +515,9 @@ export function createServer(index: DataIndex): McpServer {
     },
     (args) => {
       const spu = String(args.spu ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const platform =
         typeof args.platform === 'string' && args.platform !== '' ? args.platform : undefined;
       const selection = selectPortraitOrError({
@@ -515,7 +562,9 @@ export function createServer(index: DataIndex): McpServer {
     (args) => {
       const level = String(args.level ?? '');
       const key = String(args.key ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       if (!['category', 'series', 'hot', 'ip'].includes(level)) {
         return err(
           'invalid-argument',
@@ -606,7 +655,9 @@ export function createServer(index: DataIndex): McpServer {
     (args) => {
       const spu = String(args.spu ?? '');
       const channelId = String(args.channelId ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const productPlatform =
         typeof args.productPlatform === 'string' && args.productPlatform !== ''
           ? args.productPlatform
@@ -678,7 +729,9 @@ export function createServer(index: DataIndex): McpServer {
     (args) => {
       const dimension = String(args.dimension ?? '');
       const label = String(args.label ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const hits = searchByTag(index, {
         dimension,
         label,
@@ -711,7 +764,9 @@ export function createServer(index: DataIndex): McpServer {
     },
     (args) => {
       const spu = String(args.spu ?? '');
-      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const monthResult = readMonth(args);
+      if ('error' in monthResult) return monthResult.error;
+      const month = monthResult.month;
       const platform =
         typeof args.platform === 'string' && args.platform !== '' ? args.platform : undefined;
       if (!findProduct(index, spu)) {
@@ -817,7 +872,9 @@ export function createServer(index: DataIndex): McpServer {
       }),
     },
     (args) => {
-      const month = String(args.month ?? '');
+      const monthResult = readRequiredMonth(args);
+      if (typeof monthResult !== 'string') return monthResult;
+      const month = monthResult;
       const rows = index.recency ?? [];
       if (rows.length === 0) return notReady('get_recency_distribution');
       const matched = rows.filter((row) => row.month === month);
@@ -842,7 +899,9 @@ export function createServer(index: DataIndex): McpServer {
       }),
     },
     (args) => {
-      const month = String(args.month ?? '');
+      const monthResult = readRequiredMonth(args);
+      if (typeof monthResult !== 'string') return monthResult;
+      const month = monthResult;
       const rows = index.channelFlow ?? [];
       if (rows.length === 0) return notReady('get_channel_flow_matrix');
       const matched = rows.filter((row) => row.month === month);
@@ -874,7 +933,9 @@ export function createServer(index: DataIndex): McpServer {
       }),
     },
     (args) => {
-      const month = String(args.month ?? '');
+      const monthResult = readRequiredMonth(args);
+      if (typeof monthResult !== 'string') return monthResult;
+      const month = monthResult;
       const type = String(args.type ?? '');
       const rows = index.diagnosis ?? [];
       if (rows.length === 0) return notReady('get_diagnosis');

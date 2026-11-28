@@ -2,6 +2,7 @@ import {
   availableMonths,
   buildIndex,
   channelEntityIds,
+  isNaturalMonth,
   parsePeriod,
   periodMonths,
   PLATFORM_PREFERENCE,
@@ -31,7 +32,20 @@ export interface DataRootDatasetOptions {
   month?: string;
 }
 
-/** 索引里出现过的渠道画像月份（SA-09：来自 core 的 `availableMonths`，区间标签按字面保留）。 */
+/** 校验 `month` 入参为自然月 `YYYY-MM`（验收修正一）。非法即抛错，不生成任何产物。 */
+export function validateMonthOption(month: string | undefined): void {
+  if (month === undefined) return;
+  if (!isNaturalMonth(month)) {
+    throw new Error(`month 必须是 YYYY-MM，收到 ${month}`);
+  }
+}
+
+/**
+ * 报告用「可用月份」列表（验收修正二，恢复 P1 自然月口径）：
+ * 单月标签取本身；区间／年份标签取**结束月**；去重升序。
+ * 索引层 `index.months` 与 core 的 `availableMonths` 仍按 SA-09 保留字面标签，
+ * 转换在工具1 侧完成。unknown 标签不产出月份。
+ */
 export function indexMonths(index: DataIndex): string[] {
   const ids = [
     ...new Set(
@@ -40,7 +54,14 @@ export function indexMonths(index: DataIndex): string[] {
         .map((portrait) => portrait.entityId),
     ),
   ];
-  return availableMonths(index, 'channel', ids);
+  const labels = availableMonths(index, 'channel', ids);
+  const months = labels.flatMap((label) => {
+    const period = parsePeriod(label);
+    if (period.kind === 'month') return [period.month];
+    if (period.kind === 'window' || period.kind === 'year') return [period.end];
+    return [];
+  });
+  return [...new Set(months)].sort();
 }
 
 /** 把平台列表按显式优先级排序：抖音＞天猫＞京东，其余按名称序兜底。 */
@@ -83,12 +104,13 @@ function pickByPreference(
 export async function buildDataRootDataset(
   options: DataRootDatasetOptions,
 ): Promise<MatchDataset> {
+  validateMonthOption(options.month);
   const index = await buildIndex({ dataRoot: options.dataRoot });
   const months = indexMonths(index);
   const notes: string[] = [];
 
-  // 选择用的是具体自然月：区间／年份标签按字面保留在 months 里，
-  // 展开成具体月份后取最新（与既有口径一致）
+  // 默认月的计算保持现状（验收修正二）：months 已是自然月，
+  // 展开取最新（与既有口径一致）
   const concreteMonths = [
     ...new Set(months.flatMap((label) => periodMonths(parsePeriod(label)))),
   ].sort();

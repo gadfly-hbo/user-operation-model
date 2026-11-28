@@ -10,6 +10,7 @@ import {
   type ProductDossier,
 } from '@uom/core';
 import type { MatchDataset } from './types.js';
+import { validateMonthOption } from './data-root.js';
 
 /**
  * 抖音参考数据的**只读**适配器。
@@ -128,6 +129,7 @@ function readProductMetrics(root: string): Map<string, ProductMetrics> {
 
 /** 构建参考数据集。 */
 export function buildReferenceDataset(options: ReferenceDatasetOptions): MatchDataset {
+  validateMonthOption(options.month);
   const root = options.root;
   if (!existsSync(root)) {
     throw new Error(`参考数据根目录不存在：${root}`);

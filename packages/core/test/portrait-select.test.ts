@@ -271,3 +271,41 @@ describe('selectPortrait · 实体类型隔离与平台优先级', () => {
     assert.deepEqual([...PLATFORM_PREFERENCE], ['douyin', 'tmall', 'jd']);
   });
 });
+
+describe('验收修正一 · month 入参必须是自然月', () => {
+  test('区间标签当 month → invalid-month，不按重叠匹配放行', () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-E'],
+      month: '2024-07~2025-06',
+    });
+    assert.deepEqual(result, { status: 'invalid-month', month: '2024-07~2025-06' });
+  });
+
+  test('月份超出 01–12（2026-13）→ invalid-month，不静默返回 not-found', () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-SINGLE'],
+      month: '2026-13',
+    });
+    assert.deepEqual(result, { status: 'invalid-month', month: '2026-13' });
+  });
+
+  test('写法不完整（2026-1）→ invalid-month，零候选也不得报 not-found（不做任何查找）', () => {
+    const result = selectPortrait({ portraits: [] }, {
+      entityType: 'product',
+      entityIds: ['SPU-NONE'],
+      month: '2026-1',
+    });
+    assert.deepEqual(result, { status: 'invalid-month', month: '2026-1' });
+  });
+
+  test('合法自然月不受影响', () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-SINGLE'],
+      month: '2026-10',
+    });
+    assert.equal(result.status, 'found');
+  });
+});

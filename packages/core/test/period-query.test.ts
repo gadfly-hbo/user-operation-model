@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  listChannels,
   searchByTag,
   similarProducts,
   type DataIndex,
@@ -100,5 +101,44 @@ describe('similarProducts · month 选取（SA-03）', () => {
     const hitB = hits.find((hit) => hit.spu === 'SPU-B');
     assert.ok(hitB);
     assert.equal(hitB.hasPortrait, false, '缺月不回退，画像分不计入');
+  });
+});
+
+describe('验收修正一 · list_channels 按覆盖规则判断「该月有画像」', () => {
+  /** 渠道画像覆盖形态：单月／区间／年份各一份。 */
+  const CHANNEL_INDEX = {
+    portraits: [
+      { ...mk('演示账号月', '2026-10', 'douyin', 0.4), entityType: 'channel' },
+      { ...mk('演示账号区间', '2025-07~2026-06', 'tmall', 0.5), entityType: 'channel' },
+      { ...mk('演示账号年', '2024-01~2024-12', 'jd', 0.6), entityType: 'channel' },
+    ],
+    products: [],
+    channels: [
+      { channelId: 'D-M', name: '演示账号月', platform: '抖音', channelType: '直播' },
+      { channelId: 'D-W', name: '演示账号区间', platform: '天猫', channelType: '店铺' },
+      { channelId: 'D-Y', name: '演示账号年', platform: '京东', channelType: '店铺' },
+    ],
+    months: ['2026-10', '2025-07~2026-06', '2024-01~2024-12'],
+    unavailable: {},
+    issues: [],
+  } as unknown as DataIndex;
+
+  test('区间画像覆盖的月份应列出渠道（不再按字面相等）', () => {
+    const ids = listChannels(CHANNEL_INDEX, { month: '2026-01' }).map((c) => c.channelId);
+    assert.ok(ids.includes('D-W'), `区间画像覆盖 2026-01 的渠道应列出：${ids.join('、')}`);
+  });
+
+  test('年份画像覆盖的月份应列出渠道', () => {
+    const ids = listChannels(CHANNEL_INDEX, { month: '2024-06' }).map((c) => c.channelId);
+    assert.deepEqual(ids, ['D-Y']);
+  });
+
+  test('无画像覆盖的月份 → 列表为空，不回退', () => {
+    const ids = listChannels(CHANNEL_INDEX, { month: '2026-07' }).map((c) => c.channelId);
+    assert.deepEqual(ids, []);
+  });
+
+  test('不带 month 行为不变：全部渠道列出', () => {
+    assert.equal(listChannels(CHANNEL_INDEX).length, 3);
   });
 });

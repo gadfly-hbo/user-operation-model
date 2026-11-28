@@ -1,7 +1,7 @@
 import type { DataIndex } from '../index/types.js';
 import { platformId } from '../normalize/catalog/tables.js';
 import type { NormalizedPortrait } from '../normalize/types.js';
-import { parsePeriod, periodCovers } from './parse.js';
+import { isNaturalMonth, parsePeriod, periodCovers } from './parse.js';
 
 /**
  * 画像选择（切片 A · SA-02）。
@@ -34,7 +34,9 @@ export type SelectPortraitResult =
       months: string[];
       /** 候选画像的来源平台（去重升序）。 */
       platforms: string[];
-    };
+    }
+  /** `month` 入参不是自然月 `YYYY-MM`（验收修正一）：不做任何查找。 */
+  | { status: 'invalid-month'; month: string };
 
 export interface SelectPortraitQuery {
   entityType: string;
@@ -57,11 +59,24 @@ export function portraitMatchKind(month: string): PortraitMatchKind {
   return period.kind === 'unknown' ? 'unknown' : toMatchKind(period.kind);
 }
 
-/** 画像标签相对所选月的匹配层（null 表示不覆盖）。 */
-function tierOf(portrait: NormalizedPortrait, month: string): PortraitMatchKind | null {
-  const period = parsePeriod(portrait.month);
+/** 画像标签相对所选月的匹配层（null 表示不覆盖；unknown 标签对任意月都可参与）。 */
+function tierOfLabel(label: string, month: string): PortraitMatchKind | null {
+  const period = parsePeriod(label);
   if (period.kind === 'unknown') return 'unknown';
   return periodCovers(period, month) ? toMatchKind(period.kind) : null;
+}
+
+/** 画像标签相对所选月的匹配层（null 表示不覆盖）。 */
+function tierOf(portrait: NormalizedPortrait, month: string): PortraitMatchKind | null {
+  return tierOfLabel(portrait.month, month);
+}
+
+/**
+ * 画像标签相对自然月是否可被选中（与 `selectPortrait` 的分层规则同源）。
+ * `list_channels` 等调用方用它统一「该月有画像」的判定（验收修正一）。
+ */
+export function portraitLabelCovers(label: string, month: string): boolean {
+  return tierOfLabel(label, month) !== null;
 }
 
 /** 画像自身标签对应的匹配形态。 */
@@ -84,6 +99,10 @@ export function selectPortrait(
   source: PortraitSource,
   query: SelectPortraitQuery,
 ): SelectPortraitResult {
+  // month 必须是自然月（验收修正一）：区间标签、越界月份一律拒绝，不做任何查找
+  if (query.month !== undefined && !isNaturalMonth(query.month)) {
+    return { status: 'invalid-month', month: query.month };
+  }
   const ids = new Set(query.entityIds.filter((id) => id !== ''));
   let candidates = source.portraits.filter(
     (portrait) => portrait.entityType === query.entityType && ids.has(portrait.entityId),

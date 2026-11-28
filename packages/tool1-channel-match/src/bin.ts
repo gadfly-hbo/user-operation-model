@@ -7,6 +7,7 @@ import {
   buildReferenceDataset,
   buildReportInput,
   scoreDataset,
+  validateMonthOption,
 } from './dataset/index.js';
 import type { MatchDataset } from './dataset/types.js';
 import { buildMismatchList, mismatchCsv } from './report/mismatch.js';
@@ -156,6 +157,8 @@ function writeRealReport(dataset: MatchDataset, args: Args): void {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  // --month 必须是自然月（验收修正一）：非法直接报错退出，不生成任何产物
+  validateMonthOption(args.month);
 
   if (args.demo) {
     const input = buildDemoReport();

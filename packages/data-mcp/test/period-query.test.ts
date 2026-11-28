@@ -254,3 +254,62 @@ describe('SA-05 · get_product_dossier 按月形态', () => {
     assert.ok(payload.error?.hint?.includes('2026-10'), '应列出可用月份');
   });
 });
+
+describe('验收修正一 · month 必须是 YYYY-MM 自然月（invalid-argument）', () => {
+  const CASES: [string, Record<string, unknown>][] = [
+    ['get_channel_portrait', { channelId: 'D00001', month: '2026-13' }],
+    ['get_product_portrait', { spu: 'SPU-001', month: '2026-13' }],
+    ['get_product_dossier', { spu: 'SPU-001', month: '2026-13' }],
+    ['compare_product_channel', { spu: 'SPU-001', channelId: 'D00001', month: '2026-13' }],
+    ['search_similar_products', { spu: 'SPU-001', month: '2026-13' }],
+    ['get_portrait_aggregate', { level: 'category', key: 'T恤', month: '2026-13' }],
+    ['search_by_tag', { dimension: 'gender', label: '男', month: '2026-13' }],
+    ['list_channels', { month: '2026-13' }],
+    ['get_recency_distribution', { month: '2026-13' }],
+    ['get_channel_flow_matrix', { month: '2026-13' }],
+    ['get_diagnosis', { month: '2026-13', type: '二回断崖' }],
+  ];
+  for (const [name, args] of CASES) {
+    test(`${name} 收到 2026-13 → invalid-argument`, async () => {
+      const payload = await call(name, args);
+      assert.equal(payload.ok, false, `应拒绝非法 month：${JSON.stringify(payload)}`);
+      assert.equal(payload.error?.kind, 'invalid-argument');
+      assert.ok(
+        payload.error?.message.includes('month 必须是 YYYY-MM'),
+        `message 应说明月份写法：${payload.error?.message}`,
+      );
+      assert.ok(payload.error?.message.includes('2026-13'));
+    });
+  }
+
+  test('区间标签当 month → invalid-argument（不按重叠匹配放行）', async () => {
+    const payload = await call('get_product_portrait', {
+      spu: 'SPU-001',
+      month: '2024-07~2025-06',
+    });
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error?.kind, 'invalid-argument');
+  });
+});
+
+describe('验收修正一 · list_channels 的时间语义与其它工具统一', () => {
+  test('区间画像覆盖的月份应列出渠道（不再按字面相等）', async () => {
+    const payload = await call('list_channels', { month: '2026-01' });
+    assert.equal(payload.ok, true, JSON.stringify(payload.error));
+    const data = payload.data as { channels: { channelId: string }[] };
+    const ids = data.channels.map((channel) => channel.channelId);
+    assert.ok(ids.includes('D00002'), `区间画像覆盖 2026-01 的 D00002 应列出：${ids.join('、')}`);
+  });
+
+  test('无画像覆盖的月份 → 列表为空，不回退', async () => {
+    const payload = await call('list_channels', { month: '2026-07' });
+    const data = payload.data as { channels: unknown[] };
+    assert.deepEqual(data.channels, []);
+  });
+
+  test('不带 month 行为不变', async () => {
+    const payload = await call('list_channels');
+    const data = payload.data as { channels: unknown[] };
+    assert.equal(data.channels.length, 3);
+  });
+});
