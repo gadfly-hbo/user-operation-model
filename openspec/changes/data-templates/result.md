@@ -2,7 +2,7 @@
 
 > 变更：[spec.md](spec.md)（首轮范围 DT-2／DT-3／DT-4；DT-5 复核已完成；DT-6 PR 由主 agent 另行安排）
 > 执行：SDD·TDD 实现者 · 分支 `work/data-templates`（基线 `4ce38e4`，未 push）
-> 独立复核：**已完成，结论 FAIL**（`review.md` @ `6173a33`：阻断 B1–B4／应修 R-1～R-5／建议 9 条）；复核修单见 **§9**（2026-11-28 本轮）
+> 独立复核：**第一轮 FAIL**（`review.md` @ `6173a33`：阻断 B1–B4／应修 R-1～R-5／建议 9 条），修单见 **§9**（2026-11-28）；**第二轮（范围限定重验）PASS、应修 1–5**（`review-round2.md`，入库于 `9e050f5`），处置见 **§10**（2026-11-28 本轮）
 
 ---
 
@@ -38,17 +38,17 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `templates/数据模板.xlsx` | 模板包（tracked；31,783 bytes；23 sheet；示例行全合成） |
+| `templates/数据模板.xlsx` | 模板包（tracked；示例行全合成）。**首轮为 31,783 bytes／23 sheet**（历史事实，当时快照）；§9 修单按 spec §4 重做为 **24 sheet**（§9.5），第二轮应修后仍为 24 sheet（内容更新，见 §10） |
 | `scripts/build-data-templates.mjs` | 生成器：`npm run templates:build`；从 `TABLE_SPECS`×`TABLE_SOURCES`＋`legacy-formats` 装配；导出 `templateBlueprint()`／`buildTemplateWorkbook()` 供测试内存重建 |
-| `packages/core/src/normalize/catalog/legacy-formats.ts` | B／C 组契约唯一来源：商品主表／渠道对照／商品客观属性表头、抖音／京东／天猫画像结构与合成示例、小红书说明、README 时间范围声明结构 |
-| `packages/core/test/data-templates.test.ts` | 防漂移＋单一来源＋模板可用（真实解析器跑示例行）＋版式断言，13 项 |
+| `packages/core/src/normalize/catalog/legacy-formats.ts` | B／C 组契约唯一来源：商品主表、渠道店铺宽表表头、抖音／京东／天猫画像结构（文件名／格式／sheet 名硬规则＋抖音列名规则）与合成示例、小红书说明、README 时间范围声明结构（首轮描述里的「渠道对照／商品客观属性表头」已被 §9 修单删除，此为修订后描述） |
+| `packages/core/test/data-templates.test.ts` | 防漂移＋单一来源＋模板可用（真实解析器跑示例行）＋版式断言；**首轮 13 项**，§9 修单后 21 项，第二轮应修后 31 项（§10） |
 
 ### 修改
 
 | 文件 | 改动 |
 | --- | --- |
 | `package.json` | 仅新增 `templates:build` 脚本 |
-| `data/README.md` | 「格式模板」节改为与 catalog 一致（附锁定说明与模板包用法）；抖音示例块真实数值样本（39.26%／90.62… 等）替换为合成示例；目录说明加模板指针；删除三个旧名行 |
+| `data/README.md` | 「格式模板」节改为与 catalog 一致（附锁定说明与模板包用法）；抖音示例块真实数值样本替换为合成示例（不复述具体数值，规范 §7.1 占比属业务数据）；目录说明加模板指针；删除三个旧名行 |
 | `docs/data-request.md` | 顶部加 1 行模板包指针 |
 | `.github/scripts/check-data-guard.py` | 新增显式白名单 `ALLOWED_TRACKED_FILES`（只放行 `templates/数据模板.xlsx`），其余规则未动 |
 
@@ -145,7 +145,9 @@
 | `be3fd41` | `feat: 数据模板包——B/C 组契约固化+生成器+防漂移测试+模板入库+文档指针与守卫白名单`（本单全部交付物，8 文件 +1029/−11） |
 | （首轮文档提交） | `docs: 回填 data-templates 结果记录（DT-2～DT-4）` |
 | `c9db5fc` | `fix: 数据模板包复核修单 B1–B4——版式重做+渠道店铺宽表契约+平台文件名硬规则+往返测试`（§9 代码＋模板，5 文件 +1106/−534） |
-| （本文件所在提交） | `docs: 数据模板修单文档——README／要数清单／result 回填复核修单章`（§9 记录） |
+| `e4a8568` | `docs: 数据模板修单文档——README／要数清单／result 回填复核修单章`（§9 记录；原写「本文件所在提交」的指针在分支前进后不再自明，第二轮按复核建议改为实提交号） |
+| `dece365` | `docs(data-templates): spec §6 追认 check-no-archive-content.mjs 的 xlsx 扫描扩展`（主 agent） |
+| `9e050f5` | `docs(data-templates): 第二轮复核报告入库；spec §8 检查计划改为由 DT7 往返测试覆盖`（主 agent） |
 
 ---
 
@@ -203,7 +205,51 @@
 
 ### 9.6 仍待主 agent／用户处理
 
-1. `scripts/check-no-archive-content.mjs` 的路径授权确认（spec §6 未列，按修单 S3 修改）。
+1. ~~`scripts/check-no-archive-content.mjs` 的路径授权确认~~ **已闭合**：spec §6 已在 `dece365` 追认该路径（当时记录「待主 agent 确认」属实，此后主 agent 追认）。第二轮该脚本的 fail-closed 修改见 §10 建议①。
 2. S-6：spec §6 `.gitignore` 追认记录需用户确认（PR 说明带上）。
 3. DT-6：push／PR／独立重验与 squash 合并待授权。
 4. `offline-check`／`test:golden` 仍 NOT_RUN（需真实数据／参考资产授权）。
+
+---
+
+## 10. 第二轮应修处置（2026-11-28，依据 `review-round2.md`：结论 PASS，应修 1–5／建议 1–7）
+
+> 执行：SDD·TDD 实现者。应修 #1–#4＋建议①② 本轮修掉；应修 #5（spec §8 自相矛盾）由主 agent 在 `9e050f5` 修订（先于本单）；其余建议记录不修（理由见下）。全部改动为文案／示例层＋守卫一处，未触碰解析器行为与评分内核；`data/` 只改 `README.md`。
+
+### 10.1 TDD（先 RED 后 GREEN）
+
+- **RED**（`.local/data-templates/fix-r2/red-r2.log`）：模板测试 31 项 **7 FAIL／24 PASS**，失败全部为产品级：
+  - `R2-1 抖音列名规则写清三处`（catalog 无 `DOUYIN_HEADER_RULE` 契约，三处无从写起）；
+  - `R2-2 京东示例维度名＝「性别」`（契约示例行为「预测性别」）＋ 两个 DT7 往返（`[CSV／XLSX] jd 示例维度「性别」未投影到统一维度 gender`——京东示例照「预测性别」填导致 `projections=[]`）；
+  - `R2-3 抖音 XLSX 后果表述真实`（表目录仍是「XLSX 不被识别」，且无「报错中断」措辞）；
+  - `R2-4 京东／天猫 fileNameRule 写明「带月份与实体名」`（现契约缺该要求）；
+  - `建议① tracked xlsx 读取失败 → 退出 1`（现状 fail-open：损坏 xlsx 被静默跳过、守卫仍 exit 0）。
+  - 说明：首轮 RED 迭代中往返断言曾要求 gender 投影含「男」「女」双标签，经探针证实模板示例行只有一行（单标签），修正为「投影存在且含该行标签」后取本 RED——修正发生在实现前，RED 日志为修正后版本。
+- **GREEN**：`npm run templates:build` 重建入库 → 模板测试 **31/31**（`.local/data-templates/fix-r2/green-templates.log`）；全量 `npm run check` → **485/485**（修单前 475，新增 10 项：R2 措辞锁 4＋建议① 沙箱 3＋DT7 行为锁 3）。新增的行为锁中，「抖音改列名→归属变化」「抖音存 XLSX→buildIndex 抛错」「京东缺实体名→静默错挂」「xlsx 命中黑名单→exit 1」「干净 xlsx→exit 0」锁的是**现有解析器／守卫行为**（现状即如此，按修单只加断言），GREEN 起步；它们与上述 RED 项共同构成 R2-1～R2-4 的永久回归。
+
+### 10.2 逐条状态
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| **R2-1** 抖音列名规则（最高优先级） | **PASS** | 新契约 `DOUYIN_HEADER_RULE`（`legacy-formats.ts`：实体与月份取自第 3／4 列列名，不是文件名／目录；不改列名会静默归到「演示账号1」；实体名与渠道宽表「店铺」一致），`PortraitFormatSpec` 增 `headerRule`。三处写清：①「使用说明」在「第 2 步 填数」后新增专行（整句注入契约）；②「表目录」抖音行在「放到哪＋文件名规则」后拼接 headerRule；③「列说明」抖音占比／TGI 两列的必需性格写明列名格式、口径说明列（note）含整条规则。DT7 行为锁：把抖音 sheet 第 3／4 列列名改成 `2701-2712演示账号2` 后另存（目录／文件名故意与实体无关）→ `buildIndex` 识别 `entityId=演示账号2`、`month=2027-01~2027-12`；往返基线断言补齐抖音 `entityId／month＝演示账号1／2026-01~2026-12`（取自列名） |
+| **R2-2** 京东示例维度 | **PASS** | `JD_PORTRAIT.exampleRows`「预测性别」→「**性别**」（京东原生维度名，`dimensions.ts` jd `sourceDimensions`）；note 列出京东原生维度名（性别、年龄、十大靶群、购买力、城市线级）并警示「照抖音的『预测性别』填不进投影」。DT7：`assertRoundTripIndex` 断言 jd（及 douyin／tmall）画像 `projections.gender` 存在且含示例行标签——修前 `projections=[]`（RED），修后 gender 落位 |
+| **R2-3** 抖音 XLSX 后果如实 | **PASS** | `DOUYIN_PORTRAIT.saveFormat` 改为「仅 CSV（抖音解析器按 CSV 文本读取；存成 XLSX 会导致索引构建报错中断，不是静默跳过）」；`data/README.md` 格式模板总则补「唯一例外」并在抖音硬规则行同步；`docs/data-request.md`「怎么给」第 3 条补同一例外。行为锁（现状即如此）：`_抖音.xlsx` → `buildIndex` rejects 且报错含「抖音画像」（探针证实 review 所述「抛错中断」而非「不被识别」）。解析器行为本身属既有代码，未改 |
+| **R2-4** 京东／天猫文件名带月份与实体名 | **PASS** | 两平台 `fileNameRule` 改为「文件名须为『<起止年月><实体名>_京东.xlsx／_天猫.xlsx』形式：带月份与实体名…缺了会静默错挂」（README 逐字同步，DT2 锁定）。DT7 正向：往返断言 jd／tmall `entityId=演示账号1`＋`month=2026-01~2026-12` 按文件名「2601-2612演示账号1」归属；反向锁：`画像_京东.xlsx`（Sheet0 正确）→ `entityId=画像`、`month=''` **且不报错**——锁定「静默错挂」这一文件名规则要防的真实后果 |
+| **应修 #5** spec §8 措辞矛盾 | **不适用（已闭合）** | 由主 agent 在 `9e050f5` 修订 spec §8（「模板可用」改为由 DT7 往返测试覆盖）；本单未改 spec |
+| **建议①** 守卫 xlsx 读取失败 fail-closed | **PASS** | `scripts/check-no-archive-content.mjs`：xlsx 抽取失败不再 `continue` 静默跳过，记入 `xlsxErrors` 并在命中检查后 `exit 1`（不回显内容，只报路径）。测试用临时 git 沙箱复制**当前真实脚本**运行（`UOM_ARCHIVE_FIXED_ROOT` 指向沙箱内合成 jsonl 黑名单，不触真实归档数据）：损坏 xlsx → exit 1＋stderr 含「fail-closed」；xlsx 单元格文本命中合成黑名单 → exit 1（S3 回归锁）；干净 xlsx → exit 0（不误伤）。真实仓库实跑仍 PASS（0 命中） |
+| **建议②** result.md 陈旧数字与过时指针 | **PASS** | 本节即修订：§2/§3 首轮数字标注「首轮」并注现行值（23→24 sheet、13→31 项测试）；§3 legacy-formats 描述改为修订后事实；§4 不再复述真实占比数值（规范 §7.1）；§8「（本文件所在提交）」改为实提交号 `e4a8568`，并补 `dece365`／`9e050f5` 两行；§9.6 第 1 条标注已闭合（`dece365` 追认） |
+| 其余建议（记录不修） | **NOT_RUN（记录不修）** | ① funnel「也认 `domains/08_指标体系/funnel.csv`」备选路径会产生「未识别的数据文件」warning：备选路径来自 `build.ts` `TABLE_SOURCES`（P0 已交付行为），删路径或注明都超出文案修单授权且 warning 无功能影响——留数据线后续变更处置；② products 可选客观属性列提示：列说明「口径说明」列已含 `PRODUCT_MASTER_NOTE`（列名与字段目录 sources 对齐、目录外落 extra），客观属性来源在 `data/README.md`「商品客观属性」说明与 `fields.ts`，模板再加散文行与「列说明一行一列」版式冲突、收益边际——留后续；③ DT7 额外断言（`index.products.length===1`＋无「多张商品表中重复」issue）：B4 反向已被复核实测，模板侧已有「无 product-attributes sheet」断言＋README 抢占警示，索引层断言留后续；④ 「示例全部合成」测试仅匹配单一真实品牌名正则：实质防护依赖本地 `check:archive-content`（fail-closed），CI 无黑名单的注释说明留后续 |
+
+### 10.3 检查结果（第二轮修单后全量实跑）
+
+| 检查 | 命令 | 结果 | 关键输出 |
+| --- | --- | --- | --- |
+| 构建＋全量测试 | `npm run check` | **PASS** | `tests 485 / pass 485 / fail 0` |
+| 模板测试（单文件） | `node --test packages/core/dist/test/data-templates.test.js` | **PASS** | 31/31 |
+| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS** | 相对链接 139 条，错误 0，告警 0 |
+| 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | **PASS** | 「数据守卫通过」 |
+| 归档内容 | `npm run check:archive-content` | **PASS** | 黑名单 85 条，扫描文本 189 个＋xlsx 单元格文本 1 个，0 命中 |
+| 依赖审计 | `npm audit --audit-level=high` | **PASS** | `found 0 vulnerabilities` |
+| 断网 e2e／黄金脚本 | `npm run offline-check`／`npm run test:golden` | **NOT_RUN** | 同 §5：需真实 `data/`／参考资产授权；本轮未改解析器与评分内核任何文件 |
+
+证据位置：`.local/data-templates/fix-r2/`（`red-r2.log` RED 31 项 7 FAIL／24 PASS；`green-templates.log` 31/31；`check.log` 全量 485/485；`probe/` 为 RED 阶段 douyin 投影探针——无业务数据）。暂存清单仅含授权路径文件，`data/` 下仅 `README.md`。
