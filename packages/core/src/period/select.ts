@@ -1,7 +1,7 @@
 import type { DataIndex } from '../index/types.js';
 import { platformId } from '../normalize/catalog/tables.js';
 import type { NormalizedPortrait } from '../normalize/types.js';
-import { parsePeriod, periodCovers } from './parse.js';
+import { isNaturalMonth, parsePeriod, periodCovers } from './parse.js';
 
 /**
  * 画像选择（切片 A · SA-02）。
@@ -30,10 +30,12 @@ export type SelectPortraitResult =
       status: 'ambiguous';
       /** 歧义维度：月份或平台。 */
       reason: 'month' | 'platform';
-      /** 候选画像的月份标签（去重升序）。 */
+      /** 候选画像的月份标签（去重升序，不含空标签）。 */
       months: string[];
       /** 候选画像的来源平台（去重升序）。 */
       platforms: string[];
+      /** 候选中是否含无月份标签的画像（第二轮复核 N2：提示形态判定用）。 */
+      hasMonthless: boolean;
     }
   /** `month` 入参不是自然月 `YYYY-MM`（验收修正一）：不做任何查找。 */
   | { status: 'invalid-month'; month: string };
@@ -105,15 +107,16 @@ export function selectPortrait(
   query: SelectPortraitQuery,
 ): SelectPortraitResult {
   const platform = specifiedPlatform(query.platform);
-  // month 必须是自然月（验收修正一）：区间标签、越界月份一律拒绝，不做任何查找；
-  // 校验通过后以 parsePeriod 的规范月标签作为查找值，带首尾空白的写法等价于规范写法（复核修正）
+  // month 必须是自然月（验收修正一；第二轮复核 N1 收紧为严格判断）：
+  // 区间标签、越界月份、带首尾空白写法、`2610` 等 YYMM 写法一律拒绝，不做任何查找。
+  // v0.3 的「带空白按规范月查找」作废——规范化上移到边界层（MCP readMonth／
+  // 工具1 validateMonthOption），此处拿到什么就用什么，不再做写法层面的猜测。
   let month: string | undefined;
   if (query.month !== undefined) {
-    const period = parsePeriod(query.month);
-    if (period.kind !== 'month') {
+    if (!isNaturalMonth(query.month)) {
       return { status: 'invalid-month', month: query.month };
     }
-    month = period.month;
+    month = query.month;
   }
   const ids = new Set(query.entityIds.filter((id) => id !== ''));
   let candidates = source.portraits.filter(
@@ -138,6 +141,7 @@ export function selectPortrait(
       reason: 'month',
       months: uniqueSorted(candidates.map((portrait) => portrait.month).filter((m) => m !== '')),
       platforms: uniqueSorted(candidates.map(platformOf).filter((p) => p !== '')),
+      hasMonthless: candidates.some((portrait) => portrait.month === ''),
     };
   }
 
@@ -171,5 +175,6 @@ export function selectPortrait(
     reason: 'platform',
     months: uniqueSorted(tier.map((item) => item.portrait.month).filter((m) => m !== '')),
     platforms,
+    hasMonthless: tier.some((item) => item.portrait.month === ''),
   };
 }

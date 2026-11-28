@@ -115,27 +115,38 @@ export function createServer(index: DataIndex): McpServer {
     if (selection.status === 'found') return { portrait: selection.portrait };
     if (selection.status === 'ambiguous') {
       const platformParam = query.platformParam ?? 'platform';
-      // hint 按 reason 分支（复核应修-1）：平台歧义提示传 platform，
-      // 跨月歧义提示传 month；同月多平台（reason=month 且只涉及一个月）的
-      // 消歧入口同样是 platform（SA-03 主路径）。
-      const monthHint = selection.months.length === 1 || selection.reason === 'platform';
-      if (monthHint) {
+      // hint 按形态判定（第二轮复核 N2）：平台提示只在「可选平台多于一个」且
+      // （reason=platform，或候选全无月份，或候选全部共享同一非空月份标签）时给出；
+      // 单平台多月、无月份与有月份混合的形态提示 month——照旧提示传 platform
+      // 会死循环（C4），message 也不得把无月份画像说成「在某月有多平台画像」（C5）。
+      const allShareOneMonth = selection.months.length === 1 && !selection.hasMonthless;
+      const platformHint =
+        selection.platforms.length > 1 &&
+        (selection.reason === 'platform' || selection.months.length === 0 || allShareOneMonth);
+      if (platformHint) {
         const monthLabel = selection.reason === 'platform'
           ? query.month ?? selection.months[0] ?? ''
           : selection.months[0] ?? '';
+        const inMonth = monthLabel !== '' ? ` 在 ${monthLabel}` : '';
         return {
           error: err(
             'ambiguous',
-            `${query.label} 在 ${monthLabel} 有多平台画像（平台：${selection.platforms.join('、')}）`,
+            `${query.label}${inMonth} 有多平台画像（平台：${selection.platforms.join('、')}）`,
             `传 ${platformParam} 参数消歧（可选平台：${selection.platforms.join('、')}）`,
           ),
         };
       }
+      const monthPart = selection.months.length > 0 ? `月份：${selection.months.join('、')}` : '无月份';
+      const platformPart = selection.platforms.length > 1
+        ? `；平台：${selection.platforms.join('、')}`
+        : '';
       return {
         error: err(
           'ambiguous',
-          `${query.label} 有多份画像（月份：${selection.months.join('、')}${selection.platforms.length > 1 ? `；平台：${selection.platforms.join('、')}` : ''}）`,
-          `传 month 参数（${describeAvailablePeriods(selection.months)}）`,
+          `${query.label} 有多份画像（${monthPart}${platformPart}）`,
+          selection.months.length > 0
+            ? `传 month 参数（${describeAvailablePeriods(selection.months)}）`
+            : '候选均为无月份画像：传任意月份（YYYY-MM）即可作为最低层命中',
         ),
       };
     }
@@ -172,6 +183,8 @@ export function createServer(index: DataIndex): McpServer {
   /**
    * 读取并校验可选 `month` 入参（验收修正一）：必须是自然月 `YYYY-MM`。
    * 缺省与空串按「未传」处理；非法写法直接返回 `invalid-argument`，不做查找。
+   * 校验走 core 的 `isNaturalMonth` 严格判断（第二轮复核 N1）：不裁首尾空白、
+   * 不接受 `2610` 等 YYMM 写法，避免按月键查找静默落空。
    */
   const readMonth = (
     args: Record<string, unknown>,
@@ -189,7 +202,7 @@ export function createServer(index: DataIndex): McpServer {
     return { month: args.month };
   };
 
-  /** 必填 `month` 入参的读取与校验（验收修正一）：任何非 `YYYY-MM` 写法都拒绝。 */
+  /** 必填 `month` 入参的读取与校验（验收修正一）：任何非 `YYYY-MM` 写法都拒绝（`isNaturalMonth` 严格判断）。 */
   const readRequiredMonth = (args: Record<string, unknown>): string | ToolResult<never> => {
     const value = typeof args.month === 'string' ? args.month : '';
     if (!isNaturalMonth(value)) {
@@ -607,10 +620,17 @@ export function createServer(index: DataIndex): McpServer {
         const ambiguousMember = members.find((member) => member.selection.status === 'ambiguous');
         if (ambiguousMember && ambiguousMember.selection.status === 'ambiguous') {
           const selection = ambiguousMember.selection;
+          // 措辞按形态（第二轮复核 N2·S2）：months 为空时「没有可作为 month 的
+          // 画像期间」是误导——无月份画像对任意月份均参与聚合，传任意 month 即可。
+          const monthPart = selection.months.length > 0
+            ? `月份：${selection.months.join('、')}`
+            : '无月份';
           return err(
             'ambiguous',
-            `成员 ${ambiguousMember.spu} 有多份画像（月份：${selection.months.join('、')}）`,
-            `传 month 参数（${describeAvailablePeriods(selection.months)}）`,
+            `成员 ${ambiguousMember.spu} 有多份画像（${monthPart}）`,
+            selection.months.length > 0
+              ? `传 month 参数（${describeAvailablePeriods(selection.months)}）`
+              : '成员为无月份画像：传任意月份（YYYY-MM）即可聚合（无月份画像对任意月份均参与）',
           );
         }
       }

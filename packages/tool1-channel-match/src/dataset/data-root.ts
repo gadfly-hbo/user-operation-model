@@ -32,7 +32,7 @@ export interface DataRootDatasetOptions {
   month?: string;
 }
 
-/** 校验 `month` 入参为自然月 `YYYY-MM`（验收修正一）。非法即抛错，不生成任何产物。 */
+/** 校验 `month` 入参为自然月 `YYYY-MM`（验收修正一；第二轮复核 N1 严格判断）。非法即抛错，不生成任何产物。 */
 export function validateMonthOption(month: string | undefined): void {
   if (month === undefined) return;
   if (!isNaturalMonth(month)) {

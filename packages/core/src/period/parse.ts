@@ -9,6 +9,9 @@
 /** 单月标签 `YYYY-MM`。 */
 const MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
 
+/** 自然月入参的严格写法：四位年、连字符、两位月 01–12。不裁空白、不接受 YYMM（第二轮复核 N1）。 */
+const NATURAL_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 /** 区间标签 `YYYY-MM~YYYY-MM`。 */
 const WINDOW_PATTERN = /^(\d{4})-(\d{2})~(\d{4})-(\d{2})$/;
 
@@ -80,9 +83,16 @@ export function parsePeriod(label: string): Period {
   return { kind: 'unknown', label: text };
 }
 
-/** 是否为合法自然月写法 `YYYY-MM`（01–12 月）。查询入参校验的唯一来源（验收修正一）。 */
+/**
+ * 是否为合法自然月写法 `YYYY-MM`（01–12 月）。查询入参校验的唯一来源（验收修正一）。
+ *
+ * 严格判断（第二轮复核 N1）：恰好四位年、连字符、两位月；**不裁首尾空白**、
+ * **不接受 `2610` 等 YYMM 写法**、不接受区间／年份标签。宽松的标签解析
+ * （`parsePeriod`：`2610`→`2026-10`、`2024`→全年区间）只用于**画像标签**，
+ * 不用于入参校验——该取法在边界层会静默失效（一轮回归）。
+ */
 export function isNaturalMonth(label: string): boolean {
-  return parsePeriod(label).kind === 'month';
+  return NATURAL_MONTH_PATTERN.test(label);
 }
 
 /**
@@ -111,13 +121,13 @@ export function describeAvailablePeriods(labels: string[]): string {
 /**
  * 期间是否覆盖给定自然月 `YYYY-MM`。unknown 不覆盖任何月。
  *
- * `month` 必须是自然月写法（复核修正）：`2024-1`、`2610` 这类非自然月
- * 一律返回 false，不做字典序或写法层面的猜测比较；首尾空白按规范写法处理。
+ * `month` 必须是自然月写法（第二轮复核 N1 严格判断，`isNaturalMonth` 同源）：
+ * `2024-1`、`2610`、带首尾空白的写法一律返回 false，不做字典序或写法层面的
+ * 猜测比较；宽松解析只用于画像标签。
  */
 export function periodCovers(period: Period, rawMonth: string): boolean {
-  const parsed = parsePeriod(rawMonth);
-  if (parsed.kind !== 'month') return false;
-  const month = parsed.month;
+  if (!isNaturalMonth(rawMonth)) return false;
+  const month = rawMonth;
   switch (period.kind) {
     case 'month':
       return period.month === month;
