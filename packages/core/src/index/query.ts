@@ -69,11 +69,25 @@ export function portraitPlatform(portrait: NormalizedPortrait): string {
  * 渠道在画像侧可能用到的实体标识。
  *
  * 优先是渠道宽表的店铺名（画像文件按店铺名命名），其次是店铺编码本身。
+ *
+ * 别名目录存在时，别名与规范名互相可达：画像实体名归一后仍能反查，
+ * 渠道店铺名是别名时也能找到规范名对应的画像。
  */
 export function channelEntityIds(index: DataIndex, channelId: string): string[] {
   const ids = new Set<string>([channelId]);
   const channel = findChannel(index, channelId);
   if (channel?.name) ids.add(channel.name);
+  for (const alias of index.entityAliases ?? []) {
+    if (!alias.alias || !alias.canonical) continue;
+    if (alias.channelId && alias.channelId === channelId) {
+      ids.add(alias.canonical);
+      ids.add(alias.alias);
+    }
+    if (channel?.name && (alias.alias === channel.name || alias.canonical === channel.name)) {
+      ids.add(alias.canonical);
+      ids.add(alias.alias);
+    }
+  }
   return [...ids];
 }
 
@@ -131,10 +145,25 @@ export interface ProductFilter {
   keyword?: string;
   minPrice?: number;
   maxPrice?: number;
+  /**
+   * 按渠道过滤：店铺编码或店铺名。
+   * 需要商品↔渠道关联数据（`data/tables/product-channel.csv`），
+   * 关联数据缺失时不返回任何商品。
+   */
+  channel?: string;
 }
 
 /** 商品检索。 */
 export function listProducts(index: DataIndex, filter: ProductFilter = {}): ProductDossier[] {
+  // 按渠道过滤需要商品↔渠道关联数据；关联数据缺失时结果为空（不猜、不回退）
+  const linkedSpus = filter.channel
+    ? new Set(
+        (index.productChannels ?? [])
+          .filter((link) => resolveChannelIds(index, filter.channel!).has(link.channelId))
+          .map((link) => link.spu),
+      )
+    : undefined;
+
   return index.products.filter((product) => {
     if (filter.category) {
       const category = product.category;
@@ -158,8 +187,22 @@ export function listProducts(index: DataIndex, filter: ProductFilter = {}): Prod
       if (filter.minPrice !== undefined && price < filter.minPrice) return false;
       if (filter.maxPrice !== undefined && price > filter.maxPrice) return false;
     }
+    if (linkedSpus && !linkedSpus.has(product.spu)) return false;
     return true;
   });
+}
+
+/**
+ * 把渠道过滤参数解析成店铺编码集合。
+ *
+ * 接受店铺编码或店铺名；查不到时保留原值，便于直接用编码命中关联表。
+ */
+export function resolveChannelIds(index: DataIndex, key: string): Set<string> {
+  const ids = new Set<string>([key]);
+  for (const channel of index.channels) {
+    if (channel.channelId === key || channel.name === key) ids.add(channel.channelId);
+  }
+  return ids;
 }
 
 export interface TagHit {
@@ -298,20 +341,22 @@ export function similarProducts(
 /**
  * 聚合层级画像。
  *
- * 目前只支持品类层级（由商品档案的品类字段推导）。系列／爆款／IP 层级
- * 需要聚合口径表，未接入时由调用方返回明确错误。
+ * 品类层级由商品档案的品类字段推导；系列／爆款／IP 层级需要**聚合口径表**
+ * （`data/tables/aggregate-groups.csv`），表未接入时返回 undefined。
+ * 聚合口径见归一化规则 §5.6。
  */
 export function aggregatePortrait(
   index: DataIndex,
   params: { level: string; key: string },
 ): NormalizedPortrait | undefined {
-  if (params.level !== 'category') return undefined;
-
-  const members = index.products.filter((product) => {
-    const category = product.category;
-    const haystack = [category?.l1, category?.l2, category?.l3].filter(Boolean).join('/');
-    return haystack.includes(params.key);
-  });
+  const members =
+    params.level === 'category'
+      ? index.products.filter((product) => {
+          const category = product.category;
+          const haystack = [category?.l1, category?.l2, category?.l3].filter(Boolean).join('/');
+          return haystack.includes(params.key);
+        })
+      : productsByGroup(index, params.level, params.key);
   if (members.length === 0) return undefined;
 
   const memberPortraits = members
@@ -361,12 +406,24 @@ export function aggregatePortrait(
   }
 
   return {
-    entityType: 'category',
+    entityType: params.level,
     entityId: params.key,
     month: memberPortraits[0]?.month ?? '',
     platformLabels: {},
     projections: dimensions,
   };
+}
+
+/** 按聚合口径表取某层级的成员商品。 */
+function productsByGroup(index: DataIndex, level: string, key: string): ProductDossier[] {
+  const groups = index.aggregateGroups;
+  if (!groups || groups.length === 0) return [];
+  const field = level as 'series' | 'hot' | 'ip';
+  const spus = new Set(
+    groups.filter((group) => group[field] === key).map((group) => group.spu),
+  );
+  if (spus.size === 0) return [];
+  return index.products.filter((product) => spus.has(product.spu));
 }
 
 /** 商品↔渠道画像差异。**只产出差异，不产出匹配分与评级**（属 P1 匹配内核）。 */

@@ -1,6 +1,23 @@
 import type { Portrait } from '../portrait/types.js';
 import type { ProductDossier } from '../product/types.js';
-import type { ChannelRecord, NormalizationIssue, NormalizedPortrait } from '../normalize/types.js';
+import type {
+  AggregateGroupEntry,
+  ChannelFlowEntry,
+  ChannelPerformanceEntry,
+  CohortEntry,
+  DataRangeDeclaration,
+  DiagnosisEntry,
+  EntityAliasEntry,
+  FunnelEntry,
+  MemberFeatureEntry,
+  NormalizationIssue,
+  NormalizedPortrait,
+  PortraitConflictEntry,
+  ProductChannelEntry,
+  ProductPerformanceEntry,
+  RecencyEntry,
+} from '../normalize/types.js';
+import type { ChannelRecord } from '../normalize/types.js';
 
 /**
  * 数据索引。
@@ -25,6 +42,40 @@ export interface DataIndex {
    * 这些工具调用时返回明确错误，不返回空结果。
    */
   unavailable: Record<string, string>;
+
+  /* ── P0 数据收尾新增表 ──────────────────────────────────────────────
+   *
+   * 全部为可选：表文件不存在时保持现状（与 main 逐字一致）。
+   */
+
+  /** 实体别名目录（`data/tables/entity-alias.csv`）。 */
+  entityAliases?: EntityAliasEntry[];
+  /** 跨文件画像冲突显式映射（`data/tables/portrait-conflicts.csv`）。 */
+  portraitConflicts?: PortraitConflictEntry[];
+  /** 商品 ↔ 渠道归属与成交（`data/tables/product-channel.csv`）。 */
+  productChannels?: ProductChannelEntry[];
+  /** 聚合口径（`data/tables/aggregate-groups.csv`）。 */
+  aggregateGroups?: AggregateGroupEntry[];
+  /** 商品经营指标（`data/tables/product-performance.csv`）。 */
+  productPerformance?: ProductPerformanceEntry[];
+  /** 渠道经营指标（`data/tables/channel-performance.csv`）。 */
+  channelPerformance?: ChannelPerformanceEntry[];
+  /** 生命周期漏斗（`data/tables/funnel.csv`）。 */
+  funnel?: FunnelEntry[];
+  /** 会员特征字典（`data/tables/member-features.csv`）。 */
+  memberFeatures?: MemberFeatureEntry[];
+  /** Cohort 留存（`data/retention/cohort.csv`）。 */
+  cohort?: CohortEntry[];
+  /** 老客 Recency 分布（`data/retention/recency.csv`）。 */
+  recency?: RecencyEntry[];
+  /** 跨渠道流转矩阵（`data/retention/channel-flow.csv`）。 */
+  channelFlow?: ChannelFlowEntry[];
+  /** 三大诊断输入（`data/retention/diagnosis.csv`）。 */
+  diagnosis?: DiagnosisEntry[];
+  /** 竞品人群画像（`data/domains/07_人群画像/竞品/`）。 */
+  competitorPortraits?: NormalizedPortrait[];
+  /** 数据时间范围声明（`data/README.md`）。 */
+  declaration?: DataRangeDeclaration;
 }
 
 /** 画像实体的检索定位。 */
