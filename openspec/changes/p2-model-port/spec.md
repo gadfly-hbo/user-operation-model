@@ -152,7 +152,7 @@ P2 规格：移植 ModelEvol v0.4／v0.6 → 工具2（属性→六维画像预�
 data/archive-modelevol/**            # gitignore：固化区
 docs/modelevol-provenance.md         # tracked：溯源（只含路径/哈希/日期）
 packages/core/src/model/**           # 新建：ridge / metrics / vocab / features / train / holdout-eval
-packages/core/package.json           # 仅 exports 增补 "./model/*" 子路径映射（2026-11-27 用户追认越界；不改源码、不改行为）
+packages/core/package.json           # 仅 exports 增补 "./model/*" 与 "./normalize/*" 子路径映射（2026-11-27／28 用户追认；不改源码、不改行为）
 packages/core/src/normalize/portrait-md.ts   # v0.7 同名求和解析器（替换覆盖式）
 packages/core/src/normalize/missing-registry.ts
 packages/core/src/normalize/topn-intersect.ts
@@ -160,6 +160,9 @@ packages/tool2-portrait-predict/**   # 新建：六阶段管线 + 导出器 + �
 packages/core/test/**  packages/tool2-portrait-predict/test/**
 models/**                            # gitignore：登记副本（manifest 校验记录入 docs）
 tsconfig.json                        # 登记新包 references
+scripts/**                           # 校验与管线入口：fidelity-v04 / v06-pipeline / verify-modelevol-provenance（2026-11-28 用户追认）
+package.json  .gitignore             # 根脚本登记（test:fidelity-v04 / pipeline:v06）与 models/ 忽略（2026-11-28 追认）
+docs/match-model-baseline.md         # 冻结基线与门槛结论记录（2026-11-28 追认）
 openspec/changes/p2-model-port/**
 ```
 
