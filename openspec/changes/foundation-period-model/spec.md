@@ -104,3 +104,11 @@ openspec/changes/foundation-period-model/**
 | U4 | 内核配置版本号 | 递增为 `sa-2026-11-common-labels-uncalibrated` |
 | U5 | `get_product_dossier` 的画像形态 | 由单个 `portrait` 改为 `portraits` 数组（全部月份或指定月） |
 | U6 | 站点里的合成演示报告 `site/web/tool1-report.html` 是否重新生成 | 不重新生成（避免无关 diff）；路径不在允许修改范围内 |
+
+## v0.2（2026-11-28 验收修正）
+
+主 agent 验收实测发现三处与实现不一致，修正如下（只追加，不改上方原文）：
+
+- **SA-12 判据修正**：「`match-results.json` 除 `generatedAt` 与 `configVersion` 外逐字节一致」对演示报告不成立——SA-06 把相似度改为只在公共标签的重归一化分布上计算后，合成演示数据里商品与渠道的策略人群标签集合本就不同，且 `configVersion` 随 SA-06 递增，逐字节一致与 SA-06 直接相抵触。判据改为**「不变或逐单元可解释」**：重新生成演示报告入库，由可重复比对脚本（`packages/tool1-channel-match/scripts/demo-equivalence.mjs`）证明 48 单元中 28 不变、20 变化且全部只有 `strategy_segment` 一维、每个变化维度都带被排除的单侧标签（0 个无法解释）。
+- **U6 反转**：「站点演示报告不重新生成」改为「重新生成并入库」——理由同上：SA-06 落地后入库报告已与内核口径不一致，口径一致优先于避免 diff（`site/web/tool1-report.html` 本次允许改）。
+- **SA-03 增补「`month` 入参校验」与「`list_channels` 覆盖规则」**：验收实测发现 `selectPortrait` 把区间标签（如 `2024-07~2025-06`）当 `month` 也按重叠匹配放行、`2026-13` 只是静默返回 `not-found`，与规格中 `month` 的自然月（`YYYY-MM`）定义不符；`list_channels({ month })` 用标签字面相等，导致区间／年份画像永远匹配不上任何自然月。修正：非法 `month` 显式拒绝（core 返回 `invalid-month`、MCP 返回 `invalid-argument`、工具1 命令行非零退出且不生成产物），`list_channels` 改用与 `selectPortrait` 同源的覆盖规则（exact＞window＞year＞unknown）判断「该月有画像」。
