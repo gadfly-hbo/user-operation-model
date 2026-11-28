@@ -24,6 +24,8 @@ import { pathToFileURL } from 'node:url';
 import {
   buildV06ModelPackage,
   writeV06ModelPackage,
+  type V06GateConclusionInput,
+  type V06ModelPackageInput,
 } from '../src/export/model-package.js';
 import { trainV06FinalModel } from '../src/pipeline/v06/04-select-final.js';
 import { V06_TARGET_DIMENSIONS, type V06Sample } from '../src/pipeline/v06/lib/types.js';
@@ -103,7 +105,7 @@ function hostFingerprint(rows: number, columns: string[]) {
   };
 }
 
-const BASE_INPUT = {
+const BASE_INPUT: V06ModelPackageInput = {
   artifact: handwrittenArtifact(),
   metrics: { js_lift: 0.01 },
   fingerprint: hostFingerprint(93, ['fit', 'fabric']),
@@ -115,7 +117,39 @@ const BASE_INPUT = {
   sessionRef: 'synthetic',
   trainedAt: FIXED_TRAINED_AT,
   method: '合成夹具说明',
+  gateConclusion: gateConclusionFixture(),
 };
+
+/**
+ * 管线门槛证据夹具（结构对齐阶段 05／06 的实际产物，与 `scripts/v06-pipeline.mjs` 传入一致）。
+ * 数值全部为合成值，不对应任何真实数据。
+ */
+function gateConclusionFixture(): V06GateConclusionInput {
+  return {
+    /** 阶段 04 的选择结果（胜出配置与门槛总判定） */
+    selection: { winner: { name: 'V1_minus_subcat' }, gate: 'FAIL_NOT_POSITIVE' },
+    /** 阶段 05 验收矩阵（gate1–gate4 已判定，gate5 为 null 留给阶段 06） */
+    acceptance: {
+      gate1_all_dims_positive_significant: { pass: false },
+      gate2_high_variability_dims: { pass: false },
+      gate3_expansion_gain_over_control: { pass: true },
+      gate4_fold_stability: { pass: false },
+      gate5_frozen_inputs_and_fail_closed: { pass: null },
+    },
+    /** 宏平均 JS 提升 */
+    macroJsLift: 0.0096,
+    /** 阶段 06 fail-closed 校验结论（gate5 由这组判定） */
+    validationChecks: [
+      { id: 'V1', result: 'pass' },
+      { id: 'V9', result: 'pass' },
+      { id: 'V12', result: 'pass' },
+    ],
+    /** 冻结 folds 文件 sha256（合成值） */
+    frozenFoldsSha256: 'b'.repeat(64),
+    /** 确定性系数区 sha256（合成值） */
+    coefficientRegionSha256: 'c'.repeat(64),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // 包结构
@@ -310,5 +344,119 @@ describe('导出包与管线口径一致', () => {
     expected.labels.forEach((label, index) => {
       assert.equal(rows[0][`预测性别__${label}`], normalized[index]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 门槛结论（P2-8 登记前置：manifest 必须由管线实际结果生成，缺结论即失败）
+// ---------------------------------------------------------------------------
+
+describe('门槛结论：manifest 由管线实际结果生成', () => {
+  test('门槛结论逐项与管线结果一致（逐门槛结果、gate5 由校验判定、双哈希、Stage 上限）', () => {
+    const built = buildV06ModelPackage(BASE_INPUT);
+    const gates = JSON.parse(built.files['manifest.json']).gateConclusion;
+    assert.equal(gates.selectedVariant, 'V1_minus_subcat');
+    assert.equal(gates.selectionGate, 'FAIL_NOT_POSITIVE');
+    assert.equal(gates.macroJsLift, 0.0096);
+    assert.deepEqual(gates.perGate, {
+      gate1_all_dims_positive_significant: 'FAIL',
+      gate2_high_variability_dims: 'FAIL',
+      gate3_expansion_gain_over_control: 'PASS',
+      gate4_fold_stability: 'FAIL',
+      gate5_frozen_inputs_and_fail_closed: 'PASS',
+    });
+    assert.ok(
+      gates.gate5DeterminedBy.includes('3/3 pass'),
+      `gate5 判定依据应含通过计数，实际：${gates.gate5DeterminedBy}`,
+    );
+    assert.equal(gates.frozenFoldsSha256, 'b'.repeat(64));
+    assert.equal(gates.coefficientRegionSha256, 'c'.repeat(64));
+    assert.equal(gates.stageCeiling, 'Staging');
+    assert.ok(gates.promotionPolicy.includes('Staging'), '晋级约束必须写明 Stage 上限 Staging');
+    assert.ok(gates.promotionPolicy.includes('P2-13'), '晋级约束必须写明需 P2-13 真实数据重训');
+    assert.ok(gates.promotionPolicy.includes('授权'), '晋级约束必须写明另获授权');
+  });
+
+  test('缺门槛结论（整体或任一子字段）即失败', () => {
+    const { gateConclusion: _omitted, ...withoutGates } = BASE_INPUT;
+    void _omitted;
+    assert.throws(
+      () => buildV06ModelPackage(withoutGates as unknown as V06ModelPackageInput),
+      /门槛结论/,
+    );
+    const partial = {
+      ...BASE_INPUT,
+      gateConclusion: (() => {
+        const { gate2_high_variability_dims: _drop, ...acceptance } =
+          gateConclusionFixture().acceptance;
+        void _drop;
+        return { ...gateConclusionFixture(), acceptance };
+      })(),
+    };
+    assert.throws(() => buildV06ModelPackage(partial), /gate2/);
+  });
+
+  test('gate5 由阶段 06 校验判定：任一校验 fail 即 FAIL，校验缺失即失败', () => {
+    const withFail = {
+      ...BASE_INPUT,
+      gateConclusion: {
+        ...gateConclusionFixture(),
+        validationChecks: [{ id: 'V4', result: 'fail' as const }],
+      },
+    };
+    const gates = JSON.parse(buildV06ModelPackage(withFail).files['manifest.json']).gateConclusion;
+    assert.equal(gates.perGate.gate5_frozen_inputs_and_fail_closed, 'FAIL');
+    const withNone = {
+      ...BASE_INPUT,
+      gateConclusion: { ...gateConclusionFixture(), validationChecks: [] },
+    };
+    assert.throws(() => buildV06ModelPackage(withNone), /阶段 06|校验/);
+  });
+
+  test('门槛未过时 Stage 上限 Staging：不得导出为 Production', () => {
+    const production = { ...BASE_INPUT, stage: 'Production' };
+    assert.throws(
+      () => buildV06ModelPackage(production as unknown as V06ModelPackageInput),
+      /Staging/,
+      '门槛未过的包不得写 Production',
+    );
+  });
+
+  test('acceptance 的 gate1–gate4 出现未判定（null）即失败', () => {
+    const pending = {
+      ...BASE_INPUT,
+      gateConclusion: {
+        ...gateConclusionFixture(),
+        acceptance: {
+          ...gateConclusionFixture().acceptance,
+          gate1_all_dims_positive_significant: { pass: null },
+        },
+      },
+    };
+    assert.throws(() => buildV06ModelPackage(pending), /未判定|gate1/);
+  });
+
+  test('哈希字段非法或宏平均非有限数值即失败', () => {
+    const badFolds = {
+      ...BASE_INPUT,
+      gateConclusion: { ...gateConclusionFixture(), frozenFoldsSha256: 'zz' },
+    };
+    assert.throws(() => buildV06ModelPackage(badFolds), /sha256/);
+    const badCoef = {
+      ...BASE_INPUT,
+      gateConclusion: { ...gateConclusionFixture(), coefficientRegionSha256: '' },
+    };
+    assert.throws(() => buildV06ModelPackage(badCoef), /sha256/);
+    const badLift = {
+      ...BASE_INPUT,
+      gateConclusion: { ...gateConclusionFixture(), macroJsLift: Number.NaN },
+    };
+    assert.throws(() => buildV06ModelPackage(badLift), /宏平均|js_lift/);
+  });
+
+  test('含门槛结论的 manifest 连跑字节一致', () => {
+    const first = buildV06ModelPackage(BASE_INPUT);
+    const second = buildV06ModelPackage(BASE_INPUT);
+    assert.equal(first.files['manifest.json'], second.files['manifest.json']);
   });
 });

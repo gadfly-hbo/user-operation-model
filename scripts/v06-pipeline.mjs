@@ -341,6 +341,16 @@ async function main() {
       artifact,
       metrics: flatMetrics,
       fingerprint,
+      // 门槛结论证据：全部来自本次管线实跑的阶段 04／05／06 结果（不手写数值），
+      // 由导出器派生进 manifest.gateConclusion（P2-8 登记前置：门槛未过如实入包，Stage 只到 Staging）。
+      gateConclusion: {
+        selection,
+        acceptance: metrics.acceptance,
+        macroJsLift: metrics.macro.jsLift,
+        validationChecks: checks,
+        frozenFoldsSha256: foldsSha256,
+        coefficientRegionSha256: coefficientHash,
+      },
       name: 'uom-tool2-portrait-v06',
       version: 1,
       stage: 'Staging',
