@@ -24,6 +24,34 @@ export { parseShare, parseTgi, parseNumber } from './values.js';
 export { projectPortraitLabels, type ProjectContext } from './project.js';
 export { normalizeProductTable } from './product.js';
 export { normalizeChannelTable } from './channel.js';
+export { detectEntityType, detectPlatform } from './platform.js';
+export * from './catalog/tables.js';
+export * from './table.js';
+export { parseFunnelTable } from './funnel.js';
+export { parseMemberFeatureTable } from './member-features.js';
+export {
+  parseChannelFlowTable,
+  parseCohortTable,
+  parseDiagnosisTable,
+  parseRecencyTable,
+} from './retention.js';
+export {
+  parseAggregateGroupTable,
+  parseEntityAliasTable,
+  parsePortraitConflictTable,
+  parseProductChannelTable,
+} from './relations.js';
+export {
+  deriveActualUnitPrice,
+  parseChannelPerformanceTable,
+  parseProductPerformanceTable,
+} from './performance.js';
+export {
+  parseDataDeclaration,
+  parseMonthRange,
+  scopeTokens,
+  undeclaredDeclaration,
+} from './declaration.js';
 
 /** 默认投影上下文。目录数据即配置，进程内共享。 */
 export function defaultProjectContext(): ProjectContext {
