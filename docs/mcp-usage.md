@@ -44,7 +44,7 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 | 工具 | 参数 | 数据状态 |
 | --- | --- | --- |
 | `get_brand_portrait` | `scope` `month?` | `scope` 必须为 `target`／`all`，否则 `invalid-argument`；品牌画像数据未接入时返回 `data-not-ready` |
-| `get_competitor_portrait` | `brand` `month?` | **解析器已实现**：竞品画像放在 `data/domains/07_人群画像/竞品/`，文件到位后可用；目录存在但无可识别文件时返回 `data-not-ready` |
+| `get_competitor_portrait` | `brand` `month?` | **解析器已实现**：竞品画像放在 `data/domains/07_人群画像/竞品/`，文件到位后可用；目录存在但无可识别文件时返回 `data-not-ready`。`month` 与其它工具同口径：区间／年份画像覆盖该月即命中，无月份画像作为最低层命中并标 `match: "unknown"` |
 
 ### 商品
 
@@ -99,9 +99,11 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 | `month-mismatch` | 实体存在，但该月无画像（列出可用月份） |
 | `ambiguous` | 实体有多份画像无法唯一确定：跨月多份时列出可用月份、提示传 `month`；同月多平台时列出平台、提示传 `platform`（compare 两侧为 `productPlatform`／`channelPlatform`） |
 | `data-not-ready` | 该工具的数据源未接入 |
-| `invalid-argument` | 参数不合法。`month` 不是自然月 `YYYY-MM`（含区间标签、`2026-13`、`2026-1`）时返回此类，message 形如 `month 必须是 YYYY-MM，收到 …`；所有接受 `month` 的工具都先校验再查数据 |
+| `invalid-argument` | 参数不合法。`month` 不是自然月 `YYYY-MM`（含区间标签、`2026-13`、`2026-1`）时返回此类，message 形如 `month 必须是 YYYY-MM，收到 …`；所有接受 `month` 的工具都先校验再查数据（`month` 传**空串按未传处理**） |
 
 **空结果与数据缺失严格区分**：数据未就位时返回 `data-not-ready` 并指明缺哪个文件，**不返回空数组**。
+
+**无月份画像各工具同口径**（复核修正统一）：实体只有无月份画像时，任何 `month` 查询都可命中它，作为最低层（`match: "unknown"`）——适用于 `get_product_portrait`／`get_product_dossier`（`portraits` 条目带 `match` 字段）／`search_by_tag`／`get_portrait_aggregate`／`get_competitor_portrait`；不传 `month` 时无月份画像照常参与，且不产生 `match` 字段。区间／年份画像覆盖查询月即命中（`match` 为 `window`／`year`）。
 
 **非法入参单独成类**：`invalid-argument` 表示参数本身不合法（取值不在允许集合内，含 `month` 写法非法），与「数据没到位」的 `data-not-ready` 是两回事。逐工具的非法入参行为见上表（如 `get_portrait_aggregate` 的 `level`、`get_brand_portrait` 的 `scope`）。
 

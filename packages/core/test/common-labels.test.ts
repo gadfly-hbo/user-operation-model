@@ -132,6 +132,34 @@ describe('内核 · 公共标签重归一化（SA-06）', () => {
   });
 });
 
+describe('复核修正 · share 为 0 的标签（锁定现状，归一化规则 §5.5）', () => {
+  test('双侧都有记录的 0 份额是「观测到的 0」，仍算公共标签；单侧无记录才是单侧独有', () => {
+    const diff = diffPortraits(
+      portrait({ gender: { A: 1, B: 0 } }),
+      portrait({ gender: { B: 1 } }),
+    );
+    const gender = diff.dimensions[0]!;
+    assert.deepEqual(gender.excludedProductLabels, ['A'], '只有单侧无记录的标签被排除');
+    assert.equal(gender.excludedChannelLabels, undefined, '渠道侧没有单侧标签');
+    assert.equal(gender.reason, undefined, '有公共标签 → 维度可用');
+    assert.ok(gender.distance > 0, '观测到的 0 与观测到的 1 在公共标签上有真实距离');
+    assert.ok(Math.abs(gender.cosine) < 1e-9, '商品侧公共分布范数为 0 时余弦为 0（现状口径）');
+  });
+
+  test('两侧都记录 0 份额时标签参与重归一化（剔除会改变分布）', () => {
+    // {A:0.5, B:0.5, C:0} vs {A:0.5, B:0.5, C:0}：C 是双侧观测到的 0，不改变公共分布
+    const diff = diffPortraits(
+      portrait({ gender: { A: 0.5, B: 0.5, C: 0 } }),
+      portrait({ gender: { A: 0.5, B: 0.5, C: 0 } }),
+    );
+    const gender = diff.dimensions[0]!;
+    assert.equal(gender.reason, undefined);
+    assert.equal(gender.excludedProductLabels, undefined, 'C 双侧都有记录，不被排除');
+    assert.ok(Math.abs(gender.distance) < 1e-9);
+    assert.equal(gender.overlapTop3, 1);
+  });
+});
+
 describe('compare 差异 · 公共标签口径（SA-06）', () => {
   test('DimensionDiff 列出被排除的单侧标签', () => {
     const diff = diffPortraits(
