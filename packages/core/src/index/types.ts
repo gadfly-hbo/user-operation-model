@@ -1,4 +1,5 @@
 import type { Portrait } from '../portrait/types.js';
+import type { MissingReason } from '../match/types.js';
 import type { ProductDossier } from '../product/types.js';
 import type {
   AggregateGroupEntry,
@@ -96,6 +97,12 @@ export interface DimensionDiff {
   overlapTop3: number;
   jsSimilarity: number;
   cosine: number;
+  /** 只在商品侧出现的标签（公共标签口径排除项）。为空时省略。 */
+  excludedProductLabels?: string[];
+  /** 只在渠道侧出现的标签（公共标签口径排除项）。为空时省略。 */
+  excludedChannelLabels?: string[];
+  /** 维度不可用的原因（如两侧无公共标签）。可用时省略。 */
+  reason?: MissingReason;
 }
 
 /** 商品与渠道的画像差异。 */

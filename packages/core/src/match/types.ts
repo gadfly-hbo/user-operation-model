@@ -49,6 +49,10 @@ export interface MatchDimensionEvidence {
   top3Overlap: number;
   productTop3: { label: string; share: number }[];
   channelTop3: { label: string; share: number }[];
+  /** 只在商品侧出现的标签（公共标签口径排除项）。为空时省略。 */
+  excludedProductLabels?: string[];
+  /** 只在渠道侧出现的标签（公共标签口径排除项）。为空时省略。 */
+  excludedChannelLabels?: string[];
 }
 
 /** 客单承接（消费能力维度）的判定结果。 */
@@ -90,7 +94,9 @@ export type MissingReason =
   | 'channel-missing'
   | 'empty-distribution'
   | 'price-missing'
-  | 'spending-power-missing';
+  | 'spending-power-missing'
+  /** 两侧在该维度没有公共标签（切片 A · SA-06）。 */
+  | 'no-common-labels';
 
 /** 正向／负向驱动。 */
 export interface Driver {

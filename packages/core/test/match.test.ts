@@ -115,8 +115,9 @@ describe('匹配内核 · 维度差异是真实计算的', () => {
     assert.ok((opposed.totalScore ?? 0) < (same.totalScore ?? 0), '总分应随维度差异下降');
   });
 
-  test('性别分布不相交时性别维度分数下降', () => {
-    const result = scoreMatch(input(portrait(), portrait({ gender: { 男: 1 } }), 199));
+  test('性别分布明显错位时性别维度分数真实下降（公共标签口径）', () => {
+    // 两侧标签集合相同但分布相反：公共标签 {女,男} 上 JS/余弦真实反映错位
+    const result = scoreMatch(input(portrait(), portrait({ gender: { 女: 0.02, 男: 0.98 } }), 199));
     const gender = dimensionOf(result, 'gender').score ?? 0;
     assert.ok(gender < 40, `性别维度应显著下降，实际 ${gender}`);
   });
@@ -269,31 +270,50 @@ describe('匹配内核 · 评级、熔断与裁剪', () => {
     assert.equal(tuned.fuse, true);
   });
 
-  test('极低分被裁剪到下限并判为 C 级熔断', () => {
-    const result = scoreMatch(
-      input(
-        portrait({
-          gender: { 女: 1 },
-          age: { '18-23': 1 },
-          strategy_segment: { 新锐白领: 1 },
-          spending_power: { 低: 1 },
-          city_tier: { 一线: 1 },
-          life_stage: { 单身期: 1 },
-        }),
-        portrait({
-          gender: { 男: 1 },
-          age: { '50+': 1 },
-          strategy_segment: { 都市家庭: 1 },
-          spending_power: { 低: 1 },
-          city_tier: { 六线及以下: 1 },
-          life_stage: { 子女成年期: 1 },
-        }),
-        626.83,
-      ),
+  /** 同标签集合、相反分布的五维错位画像（公共标签口径下构造低分）。 */
+  function opposed(): { product: MatchPortraitInput; channel: MatchPortraitInput } {
+    const labels = ['甲', '乙', '丙'] as const;
+    const shares: Record<string, number> = { 甲: 0.34, 乙: 0.33, 丙: 0.33 };
+    const spread = { ...shares };
+    const concentrated = Object.fromEntries(
+      labels.map((label) => [label, label === '丙' ? 0.96 : 0.02]),
     );
-    assert.equal(result.totalScore, 25);
+    return {
+      product: portrait({
+        gender: spread,
+        age: spread,
+        strategy_segment: spread,
+        city_tier: spread,
+        life_stage: spread,
+      }),
+      channel: portrait({
+        gender: concentrated,
+        age: concentrated,
+        strategy_segment: concentrated,
+        city_tier: concentrated,
+        life_stage: concentrated,
+        spending_power: { 低: 1 },
+      }),
+    };
+  }
+
+  test('分布极端错位（标签集合相同）时落入 C 级熔断，且不低于裁剪下限', () => {
+    const { product, channel } = opposed();
+    const result = scoreMatch(input(product, channel, 626.83));
     assert.equal(result.grade, 'C');
     assert.equal(result.fuse, true);
+    assert.ok(
+      result.totalScore !== null && result.totalScore >= MATCH_CONFIG.clamp.min,
+      `总分 ${result.totalScore} 不得低于裁剪下限 ${MATCH_CONFIG.clamp.min}`,
+    );
+  });
+
+  test('原分低于配置下限时被裁剪到下限（裁剪机制）', () => {
+    const { product, channel } = opposed();
+    const config: MatchConfig = { ...MATCH_CONFIG, clamp: { min: 60, max: 99.5 } };
+    const result = scoreMatch(input(product, channel, 626.83), config);
+    assert.equal(result.totalScore, 60, '原分低于下限时必须钳制到下限');
+    assert.equal(result.grade, 'B', '钳制值 60 恰在 B 门槛上（>= b 判 B）');
   });
 });
 
