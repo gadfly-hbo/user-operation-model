@@ -6,7 +6,7 @@ import {
   aggregatePortrait,
   buildIndex,
   channelEntityIds,
-  findPortraitByEntityIds,
+  selectPortrait,
   listProducts,
   NormalizationError,
   type DataIndex,
@@ -248,23 +248,25 @@ describe('实体别名目录（DC04）', () => {
     assert.equal(aliases![0]!.channelId, 'D00003');
 
     // 画像实体名被归一为规范名
-    const portrait = findPortraitByEntityIds(index, {
+    const selection = selectPortrait(index, {
       entityType: 'channel',
       entityIds: channelEntityIds(index, 'D00003'),
     });
-    assert.ok(portrait, '别名归一后 D00003 应能关联到画像');
-    assert.equal(portrait!.entityId, '演示账号3');
+    assert.ok(selection.status === 'found', '别名归一后 D00003 应能关联到画像');
+    if (selection.status === 'found') {
+      assert.equal(selection.portrait.entityId, '演示账号3');
+    }
   });
 
   test('别名目录不存在时行为与现状一致：关联不上，且不改画像实体名', async () => {
     const root = await createP0DataRoot({ include: [] });
     const index = await buildIndex({ dataRoot: root });
     assert.equal(table(index, 'entityAliases'), undefined);
-    const portrait = findPortraitByEntityIds(index, {
+    const selection = selectPortrait(index, {
       entityType: 'channel',
       entityIds: channelEntityIds(index, 'D00003'),
     });
-    assert.equal(portrait, undefined, '无别名目录时不应凭空关联上');
+    assert.equal(selection.status, 'not-found', '无别名目录时不应凭空关联上');
     const raw = index.portraits.find((item) => item.entityId === '演示账号3旗舰店');
     assert.ok(raw, '画像实体名保持原样');
   });
@@ -442,31 +444,33 @@ describe('聚合口径表（DC08）', () => {
 });
 
 describe('经营指标接入（DC09）', () => {
-  test('商品经营指标填充 performance，缺失字段不插补', async () => {
+  test('商品经营指标按月填充 performance，缺失字段不插补', async () => {
     const root = await createP0DataRoot({ include: ['tables/product-performance.csv'] });
     const index = await buildIndex({ dataRoot: root });
     const product = index.products.find((item) => item.spu === 'SPU-001');
-    assert.ok(product?.performance);
-    assert.ok(Math.abs((product!.performance!.sellThroughRate ?? 0) - 0.8) < 1e-9);
-    assert.ok(Math.abs((product!.performance!.grossMargin ?? 0) - 0.45) < 1e-9);
-    assert.equal(product!.performance!.uv, 5000);
+    assert.ok(product?.performance?.['2026-01'], '指标应落在该月键下');
+    assert.ok(Math.abs((product!.performance!['2026-01']!.sellThroughRate ?? 0) - 0.8) < 1e-9);
+    assert.ok(Math.abs((product!.performance!['2026-01']!.grossMargin ?? 0) - 0.45) < 1e-9);
+    assert.equal(product!.performance!['2026-01']!.uv, 5000);
 
     const partial = index.products.find((item) => item.spu === 'SPU-002');
-    assert.ok(partial?.performance);
-    assert.equal(partial!.performance!.sellThroughRate, undefined, '缺失的售罄率不插补');
-    assert.equal(partial!.performance!.grossMargin, undefined, '缺失的毛利率不插补');
-    assert.equal(partial!.performance!.conversionRate, undefined, '缺失的转化率不插补');
-    assert.ok(Math.abs((partial!.performance!.returnRate ?? 0) - 0.06) < 1e-9);
+    assert.ok(partial?.performance?.['2026-01']);
+    assert.equal(partial!.performance!['2026-01']!.sellThroughRate, undefined, '缺失的售罄率不插补');
+    assert.equal(partial!.performance!['2026-01']!.grossMargin, undefined, '缺失的毛利率不插补');
+    assert.equal(partial!.performance!['2026-01']!.conversionRate, undefined, '缺失的转化率不插补');
+    assert.ok(Math.abs((partial!.performance!['2026-01']!.returnRate ?? 0) - 0.06) < 1e-9);
   });
 
-  test('零售额与零售量齐全时推出真实成交单价', async () => {
+  test('按月指标的零售额／零售量落在 performance 键下（SA-08：不再写回 price）', async () => {
     const root = await createP0DataRoot({ include: ['tables/product-performance.csv'] });
     const index = await buildIndex({ dataRoot: root });
     const product = index.products.find((item) => item.spu === 'SPU-001');
-    assert.equal(product?.price?.actualUnitPrice, 200);
+    assert.equal(product?.performance?.['2026-01']?.retailAmount, 12000);
+    assert.equal(product?.performance?.['2026-01']?.retailQty, 60);
+    assert.equal(product?.price?.actualUnitPrice, undefined, '单价解析统一走 resolveUnitPrice');
   });
 
-  test('缺零售量时不推出成交单价', async () => {
+  test('缺零售量时该月指标不带零售量，不推出成交单价', async () => {
     const root = await createP0DataRoot({
       include: ['tables/product-performance.csv'],
       tables: {
@@ -478,21 +482,51 @@ describe('经营指标接入（DC09）', () => {
     });
     const index = await buildIndex({ dataRoot: root });
     const product = index.products.find((item) => item.spu === 'SPU-001');
+    assert.equal(product?.performance?.['2026-01']?.retailQty, undefined, '缺零售量不落位');
     assert.equal(product?.price?.actualUnitPrice, undefined, '缺零售量不推出成交单价');
   });
 
-  test('渠道经营指标填充渠道档案，缺失字段不插补', async () => {
+  test('渠道经营指标按月键控填充渠道档案，缺失字段不插补', async () => {
     const root = await createP0DataRoot({ include: ['tables/channel-performance.csv'] });
     const index = await buildIndex({ dataRoot: root });
     const channel = index.channels.find((item) => item.channelId === 'D00001');
-    assert.ok(channel?.performance);
-    assert.equal(channel!.performance!.gmv, 50000);
-    assert.equal(channel!.performance!.orderCount, 200);
-    assert.ok(Math.abs((channel!.performance!.conversionRate ?? 0) - 0.03) < 1e-9);
+    assert.ok(channel?.performance?.['2026-01'], '指标应落在该月键下（复核修正·R-2 渠道侧）');
+    assert.equal(channel!.performance!['2026-01']!.gmv, 50000);
+    assert.equal(channel!.performance!['2026-01']!.orderCount, 200);
+    assert.ok(Math.abs((channel!.performance!['2026-01']!.conversionRate ?? 0) - 0.03) < 1e-9);
 
     const second = index.channels.find((item) => item.channelId === 'D00002');
-    assert.ok(second?.performance);
-    assert.equal(second!.performance!.grossMargin, undefined, '缺失的毛利率不插补');
+    assert.ok(second?.performance?.['2026-01']);
+    assert.equal(second!.performance!['2026-01']!.grossMargin, undefined, '缺失的毛利率不插补');
+  });
+
+  test('渠道经营指标按月展开：多月份全保留、空月归 unknown、不再取最新月份（复核修正）', async () => {
+    const root = await createP0DataRoot({
+      include: ['tables/channel-performance.csv'],
+      tables: {
+        'tables/channel-performance.csv': [
+          ['店铺编码', '月份', '成交额', '成交件数', '转化率', '客单价', '毛利率'],
+          ['D00001', '2026-01', '50000', '200', '3.0%', '250', '42%'],
+          ['D00001', '2026-02', '60000', '220', '3.2%', '273', '40%'],
+          ['D00002', '', '7000', '30', '2.0%', '233', ''],
+        ],
+      },
+    });
+    const index = await buildIndex({ dataRoot: root });
+    const channel = index.channels.find((item) => item.channelId === 'D00001');
+    assert.deepEqual(
+      Object.keys(channel?.performance ?? {}).sort(),
+      ['2026-01', '2026-02'],
+      '渠道经营指标按月份展开，不塌缩成最新月',
+    );
+    assert.equal(channel?.performance?.['2026-02']?.gmv, 60000);
+    const second = index.channels.find((item) => item.channelId === 'D00002');
+    assert.deepEqual(Object.keys(second?.performance ?? {}), ['unknown'], '空月份归入 unknown 键');
+    assert.equal(second?.performance?.unknown?.gmv, 7000);
+    assert.ok(
+      !index.issues.some((issue) => issue.message.includes('取最新月份')),
+      '不再产生「档案取最新月份」的问题记录',
+    );
   });
 });
 

@@ -80,9 +80,13 @@ export interface MatchConfig {
  * 匹配内核配置（初值，未经真实数据校准）。
  *
  * **权重与阈值来自讨论稿 §7.4 的初值，未经真实业务数据校准，只能记「已调整」，不得标「已优化」。**
+ *
+ * 版本 `sa-2026-11-common-labels-uncalibrated`（切片 A · SA-06）：相似度改为
+ * 只在公共标签的重归一化分布上计算。来源是**技术修复**（落实归一化规则 §5.5
+ * 的既定口径），不是数据校准；权重仍未校准。
  */
 export const MATCH_CONFIG: MatchConfig = {
-  version: 'p1-2026-11-uncalibrated',
+  version: 'sa-2026-11-common-labels-uncalibrated',
   blend: { js: 0.6, cosine: 0.25, top3: 0.15 },
   weights: {
     gender: 0.1,

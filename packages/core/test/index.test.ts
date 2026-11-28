@@ -8,7 +8,7 @@ import {
   buildIndex,
   channelEntityIds,
   cosineSimilarity,
-  findPortraitByEntityIds,
+  selectPortrait,
   findProduct,
   jensenShannonDistance,
   listChannels,
@@ -103,9 +103,9 @@ describe('渠道查询', () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
     const all = listChannels(index);
-    const filtered = listChannels(index, { month: '2025-07~2026-06' });
+    const filtered = listChannels(index, { month: '2025-12' });
     assert.ok(all.length >= filtered.length);
-    assert.equal(filtered.length, 1, '只有演示账号1 有该月画像');
+    assert.equal(filtered.length, 1, '只有演示账号1 有覆盖 2025-12 的画像（区间 2025-07~2026-06）');
     assert.equal(filtered[0]?.channelId, 'D00001');
   });
 
@@ -124,7 +124,7 @@ describe('渠道查询', () => {
     assert.ok(ids.includes('演示账号1'));
   });
 
-  test('同月多平台命中时按平台名确定性选择', async () => {
+  test('同月多平台命中时显式歧义，不按平台名偷选（切片 A · SA-02／SA-03）', async () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
     const candidates = channelEntityIds(index, 'D00001');
@@ -136,20 +136,34 @@ describe('渠道查询', () => {
     );
     assert.ok(matched.length >= 2, 'fixture 应包含同月多平台的两份画像');
 
-    const portrait = findPortraitByEntityIds(index, {
+    // 覆盖 2026-01 的最优层有两份（抖音＋天猫区间画像）：必须显式歧义，且两次调用一致
+    const first = selectPortrait(index, {
       entityType: 'channel',
       entityIds: candidates,
-      month: '2025-07~2026-06',
+      month: '2026-01',
     });
-    assert.ok(portrait);
-    // 抖音 < 天猫（字母序），两次调用结果必须一致
-    assert.deepEqual(Object.keys(portrait.platformLabels), ['douyin']);
-    const again = findPortraitByEntityIds(index, {
+    const again = selectPortrait(index, {
       entityType: 'channel',
       entityIds: candidates,
-      month: '2025-07~2026-06',
+      month: '2026-01',
     });
-    assert.deepEqual(Object.keys(again!.platformLabels), ['douyin']);
+    assert.deepEqual(first, again, '歧义结果确定性可复现');
+    assert.ok(first.status === 'ambiguous' && first.reason === 'platform');
+    if (first.status === 'ambiguous') {
+      assert.deepEqual(first.platforms, ['douyin', 'tmall']);
+    }
+    // 传 platform 后取该平台画像（抖音）
+    const resolved = selectPortrait(index, {
+      entityType: 'channel',
+      entityIds: candidates,
+      month: '2026-01',
+      platform: '抖音',
+    });
+    assert.ok(resolved.status === 'found');
+    if (resolved.status === 'found') {
+      assert.deepEqual(Object.keys(resolved.portrait.platformLabels), ['douyin']);
+      assert.equal(resolved.match, 'window');
+    }
   });
 
   test('availableMonths 对同月多平台去重', async () => {
@@ -162,14 +176,17 @@ describe('渠道查询', () => {
   test('画像能通过店铺名关联到渠道', async () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
-    // 同月多平台时必须明确月份，否则无法唯一确定
-    const portrait = findPortraitByEntityIds(index, {
+    // 同月多平台时先显式歧义，指定平台后经店铺名关联到画像
+    const selection = selectPortrait(index, {
       entityType: 'channel',
       entityIds: channelEntityIds(index, 'D00001'),
-      month: '2025-07~2026-06',
+      month: '2026-01',
+      platform: '抖音',
     });
-    assert.ok(portrait);
-    assert.equal(portrait.entityId, '演示账号1');
+    assert.ok(selection.status === 'found');
+    if (selection.status === 'found') {
+      assert.equal(selection.portrait.entityId, '演示账号1');
+    }
   });
 });
 

@@ -1,4 +1,5 @@
 export * from './portrait/types.js';
+export * from './period/index.js';
 export { DimensionRegistry, MappingTable, BandResolver } from './portrait/registry.js';
 export { DIMENSIONS, CORE_DIMENSION_IDS } from './portrait/catalog/dimensions.js';
 export { TAG_MAPPINGS } from './portrait/catalog/mappings.js';
@@ -30,5 +31,5 @@ export type {
   PriceConditionOp,
 } from './match/config.js';
 export { scoreMatch } from './match/kernel.js';
-export { parsePortraitWindow, isIntervalWindow, coversMonth } from './match/month.js';
-export type { PortraitWindow } from './match/month.js';
+export { resolveUnitPrice, resolveRetailAmount, type ResolvedUnitPrice, type UnitPriceInput } from './match/price.js';
+export { toMatchPortraitInput } from './match/portrait-input.js';

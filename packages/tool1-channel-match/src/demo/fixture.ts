@@ -1,4 +1,4 @@
-import type { MatchPortraitInput } from '@uom/core';
+import { parsePeriod, type MatchPortraitInput } from '@uom/core';
 
 /**
  * 合成演示数据。
@@ -374,7 +374,9 @@ export function toPortraitInput(profile: Profile, month: string): MatchPortraitI
       Object.entries(labels).map(([label, share]) => [label, { share }]),
     );
   }
-  const isWindow = month.includes('~');
+  // 期间识别与 core 同源（复核建议 6）：parsePeriod 的区间／年份都按窗口处理
+  const kind = parsePeriod(month).kind;
+  const isWindow = kind === 'window' || kind === 'year';
   return {
     dimensions,
     month: isWindow ? month.split('~')[1]! : month,

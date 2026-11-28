@@ -86,7 +86,7 @@ function buildDossier(
   catalog: FieldCatalog,
   spu: string,
 ): ProductDossier {
-  const dossier: ProductDossier = { spu, schemaVersion: '0.1.0' };
+  const dossier: ProductDossier = { spu, schemaVersion: '0.2.0' };
   const attributes: Record<string, string[]> = {};
   const predictionAttributes: Record<string, string[]> = {};
   const comparisonOnly: Record<string, string[]> = {};

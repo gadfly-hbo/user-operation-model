@@ -1,4 +1,5 @@
 import type { PortraitLabel, PlatformId } from '../portrait/types.js';
+import { parsePeriod } from '../period/parse.js';
 import { BandResolver, DimensionRegistry, MappingTable } from '../portrait/registry.js';
 import { parseCsvRows } from './csv.js';
 import { parseFileNameEntity, parsePortraitEntityId } from './identity.js';
@@ -298,10 +299,13 @@ function finalizePortrait(
   extraIssues: NormalizationIssue[] = [],
 ): NormalizedPortrait {
   const { projections, issues } = projectPortraitLabels(platform, platformLabels, ctx);
+  // 期间与月份标签同步写入（切片 A SA-01）：年份是全年区间，单月/区间带起止
+  const period = parsePeriod(options.month ?? '');
   return {
     entityType: options.entityType ?? 'channel',
     entityId: options.entityId ?? '',
-    month: options.month ?? '',
+    month: period.label,
+    period,
     platformLabels: { [platform]: platformLabels },
     projections,
     issues: [...extraIssues, ...issues],

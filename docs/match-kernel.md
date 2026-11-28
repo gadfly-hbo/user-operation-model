@@ -11,7 +11,9 @@
 | `types.ts` | 内核输入输出契约（`MatchInput` / `MatchResult`） |
 | `config.ts` | **参数单一来源**（`MATCH_CONFIG`）与加载期校验 |
 | `kernel.ts` | `scoreMatch`：六维评分 → 综合分 → 评级 → 驱动因素 |
-| `month.ts` | 画像时间窗规则（单月／区间／无月份） |
+| `portrait-input.ts` | 统一投影 → 内核输入的转换（`toMatchPortraitInput`） |
+| `price.ts` | 真实成交单价解析单一来源（`resolveUnitPrice` / `resolveRetailAmount`） |
+| `../period/` | 期间模型与画像选择（`parsePeriod` / `periodCovers` / `selectPortrait`）：月份写法、覆盖判定、多月份／多平台歧义显式返回的唯一来源（切片 A 起，原 `month.ts` 并入） |
 
 ```ts
 import { scoreMatch } from '@uom/core';
@@ -73,18 +75,21 @@ const result = scoreMatch({
 | 情形 | 行为 |
 | --- | --- |
 | 任一侧缺某维度 / 该维度占比全为 0 | 该维度剔除，剩余维度**重归一化**；结果列出缺项与原因 |
+| 该维度双方没有公共标签 | 维度不可用（`no-common-labels`），不参与加权；证据里列出被排除的单侧标签（切片 A · SA-06，相似度只在公共标签的重归一化分布上算） |
 | 缺价格 | 消费能力维度剔除、**无惩罚**，标 `priceMissing`；**不继承抖音工具的 199 兜底价** |
 | 渠道无该月画像 | 该组合不评分，列出原因 |
 | 可用维度 < 3 | **不产出总分**，返回 `insufficient-dimensions`，看板标注「维度不足」 |
 | 单品画像无月份 | 按静态事实画像使用，标 `productMonthUnknown` |
 | 渠道画像为区间且覆盖所选月 | 可用，标 `channelApproximate` 与时间窗 |
 | 月份不匹配 | **不回退**到相邻月份或相邻区间 |
+| 同月多平台画像 | MCP 查询返回 `ambiguous` 并列出平台，`platform` 参数消歧；工具1 批量取用按显式优先级（抖音＞天猫＞京东）并在 notes 写明数量；不按平台名偷选 |
+| 实体有多个月份画像且未指定 month | MCP 查询返回 `ambiguous` 并列出可用月份；`month` 入参必须是自然月 `YYYY-MM`，非法写法（含区间标签、`2026-13`）返回 `invalid-month`（core）／`invalid-argument`（MCP）／命令行非零退出 |
 
 ## 5. 配置与校验
 
 `MATCH_CONFIG` 是唯一的参数来源，加载时校验：混合比例和为 1、六维权重齐全且为正、A > B > 熔断阈值、裁剪区间合法、价格带区间连续不重叠且每个区间有兜底、高／低消标签不重叠、版本号非空。**校验不通过直接抛错，不静默降级。**
 
-当前版本：`p1-2026-11-uncalibrated`。
+当前版本：`sa-2026-11-common-labels-uncalibrated`（切片 A · SA-06 递增：相似度改为只在公共标签的重归一化分布上计算，技术修复非数据校准，仍记「未校准」）。
 
 ## 6. 工具1 命令行
 
@@ -121,8 +126,8 @@ npm run tool1 -- --dataset data --data-root data --month 2024-01
 ## 8. 校验命令
 
 ```bash
-npm run check                 # 类型检查 + 204 例单测
-npm run offline-check         # 断网守卫 + MCP 端到端 + 工具1 生成器断网
+npm run check                 # 类型检查 + 608 例单测（2026-11-28 切片 A 修正后实跑数）
+npm run offline-check         # 断网守卫 + MCP 端到端 + 工具1 生成器断网（需真实数据，CI 记 NOT_RUN）
 UOM_REFERENCE_ROOT=... npm run test:golden   # 黄金回归（本地，CI 不跑）
 ```
 

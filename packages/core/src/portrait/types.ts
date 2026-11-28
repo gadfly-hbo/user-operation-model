@@ -6,6 +6,8 @@
  * 不需要修改本文件，也不需要改动任何逻辑代码。
  */
 
+import type { Period } from '../period/parse.js';
+
 /** 统一维度标识。新增维度在 dimensions 目录登记即可。 */
 export type DimensionId = string;
 
@@ -60,8 +62,13 @@ export interface PortraitProjection {
 export interface Portrait {
   entityType: EntityType;
   entityId: string;
-  /** 数据月份 YYYY-MM。 */
+  /** 数据月份标签：单月 `YYYY-MM`、区间 `YYYY-MM~YYYY-MM`、年份 `YYYY-01~YYYY-12`，空串表示源数据无月份。 */
   month: string;
+  /**
+   * 期间（切片 A）：`month` 标签的结构化形态，与 `month` 同步写入。
+   * 年份导出记为全年区间（近似），不再是「该年 1 月」。
+   */
+  period?: Period;
   /**
    * 平台原生标签，按 `平台 → 原生维度 → 标签值` 三层分组完整保留，
    * 不做投影、不丢信息。

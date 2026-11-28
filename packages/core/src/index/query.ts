@@ -9,6 +9,13 @@ import {
   jensenShannonDistance,
   toDistribution,
 } from './similarity.js';
+import {
+  portraitLabelCovers,
+  portraitMatchKind,
+  selectPortrait,
+  type PortraitMatchKind,
+  type SelectPortraitResult,
+} from '../period/select.js';
 
 /** 按款号取商品档案。 */
 export function findProduct(index: DataIndex, spu: string): ProductDossier | undefined {
@@ -21,43 +28,19 @@ export function findChannel(index: DataIndex, channelId: string): ChannelRecord 
 }
 
 /**
- * 取画像。**精确匹配，不回退**。
+ * 取画像。**精确匹配，不回退**（切片 A 起委托 `selectPortrait`，SA-02）。
  *
- * 指定月份时只取该月的画像；未指定月份时取该实体唯一的一份画像，
- * 实体有多份（跨月）时返回 undefined，由调用方要求明确月份。
+ * 指定月份时按 exact＞window＞year＞unknown 取覆盖该月的最优一层；
+ * 未指定月份且实体恰有一份画像时取该份。歧义与缺失都返回 undefined，
+ * 需要区分「缺失」与「歧义」的调用方请直接用 `selectPortrait`。
  */
 export function findPortrait(index: DataIndex, key: PortraitKey): NormalizedPortrait | undefined {
-  return findPortraitByEntityIds(index, {
+  const selection = selectPortrait(index, {
     entityType: key.entityType,
     entityIds: [key.entityId],
     ...(key.month ? { month: key.month } : {}),
   });
-}
-
-/**
- * 取画像，实体标识可以是多个候选。
- *
- * 渠道画像的文件名/列名用的是**店铺名**，而渠道宽表的主键是**店铺编码**，
- * 两者通过渠道宽表的 `店铺` 字段关联。渠道侧查询需同时尝试两种标识。
- */
-export function findPortraitByEntityIds(
-  index: DataIndex,
-  key: { entityType: Portrait['entityType']; entityIds: string[]; month?: string },
-): NormalizedPortrait | undefined {
-  const ids = new Set(key.entityIds.filter(Boolean));
-  const matches = index.portraits.filter(
-    (portrait) => portrait.entityType === key.entityType && ids.has(portrait.entityId),
-  );
-  if (key.month) {
-    const matched = matches.filter((portrait) => portrait.month === key.month);
-    if (matched.length === 0) return undefined;
-    // 同月可能命中多个平台（抖音／天猫／京东各自一份），按平台名确定性选择，
-    // 不依赖数组顺序
-    return [...matched].sort((left, right) =>
-      portraitPlatform(left).localeCompare(portraitPlatform(right)),
-    )[0];
-  }
-  return matches.length === 1 ? matches[0] : undefined;
+  return selection.status === 'found' ? selection.portrait : undefined;
 }
 
 /** 画像的来源平台（platformLabels 的第一个键）。 */
@@ -115,7 +98,11 @@ export interface ChannelFilter {
   type?: string;
 }
 
-/** 渠道列表。`month` 过滤的是**有画像的月份**。 */
+/**
+ * 渠道列表。`month` 过滤的是**有画像覆盖的月份**（验收修正一）：
+ * 与 `selectPortrait` 同一套覆盖规则（exact＞window＞year＞unknown），
+ * 区间／年份画像覆盖该月即算有画像，不再按标签字面相等。
+ */
 export function listChannels(index: DataIndex, filter: ChannelFilter = {}): ChannelRecord[] {
   // 画像侧的实体标识可能是店铺名，与店铺编码通过渠道宽表关联
   const channelIdByEntityId = new Map<string, string>();
@@ -126,7 +113,10 @@ export function listChannels(index: DataIndex, filter: ChannelFilter = {}): Chan
   const portraitChannels = new Set(
     index.portraits
       .filter((portrait) => portrait.entityType === 'channel')
-      .filter((portrait) => !filter.month || portrait.month === filter.month)
+      .filter(
+        (portrait) =>
+          !filter.month || portraitLabelCovers(portrait.month, filter.month),
+      )
       .map((portrait) => channelIdByEntityId.get(portrait.entityId))
       .filter((id): id is string => Boolean(id)),
   );
@@ -217,17 +207,27 @@ export interface TagHit {
   dimension: string;
   /** 命中的标签值。 */
   label: string;
+  /** 画像与所传 `month` 的匹配方式（仅带 `month` 查询时返回，SA-03）。 */
+  match?: PortraitMatchKind;
 }
 
 /** 按人群标签反查实体。 */
 export function searchByTag(
   index: DataIndex,
-  params: { dimension: string; label: string; scope?: string; topN?: number },
+  params: { dimension: string; label: string; scope?: string; topN?: number; month?: string },
 ): TagHit[] {
   const scope = params.scope ?? 'all';
   const hits: TagHit[] = [];
   for (const portrait of index.portraits) {
     if (scope !== 'all' && portrait.entityType !== scope) continue;
+    // 与 selectPortrait／list_channels 同一口径（复核建议 2 升级）：
+    // 无月份画像任何月都可作为最低层命中（match 为 unknown）
+    if (
+      params.month !== undefined &&
+      !portraitLabelCovers(portrait.month, params.month)
+    ) {
+      continue;
+    }
     const projection = portrait.projections[params.dimension];
     if (!projection) continue;
     const label = projection.labels[params.label];
@@ -241,6 +241,7 @@ export function searchByTag(
       ...(label.tgi !== undefined ? { tgi: label.tgi } : {}),
       dimension: params.dimension,
       label: params.label,
+      ...(params.month !== undefined ? { match: portraitMatchKind(portrait.month) } : {}),
     });
   }
   hits.sort((left, right) => right.share - left.share);
@@ -283,14 +284,22 @@ export function attributeJaccard(a: ProductDossier, b: ProductDossier): number {
  * 相似款 Look-back：属性相似度与画像相似度各占一半。
  *
  * 画像部分只在**双方都有数据**的统一维度上比较。
+ * 带 `month`（SA-03）时目标与候选都改用覆盖该月的画像（selectPortrait 分层选取）；
+ * 目标或候选在该月无画像时不回退相邻月份，画像分不计入。
  */
 export function similarProducts(
   index: DataIndex,
-  params: { spu: string; topN?: number },
+  params: { spu: string; topN?: number; month?: string; platform?: string },
 ): SimilarHit[] {
   const target = findProduct(index, params.spu);
   if (!target) return [];
-  const targetPortrait = findPortrait(index, { entityType: 'product', entityId: params.spu });
+  const targetSelection = selectPortrait(index, {
+    entityType: 'product',
+    entityIds: [params.spu],
+    ...(params.month !== undefined ? { month: params.month } : {}),
+    ...(params.platform !== undefined ? { platform: params.platform } : {}),
+  });
+  const targetPortrait = targetSelection.status === 'found' ? targetSelection.portrait : undefined;
 
   const hits: SimilarHit[] = [];
   for (const candidate of index.products) {
@@ -299,10 +308,14 @@ export function similarProducts(
     let portraitScore = 0;
     let sharedDimensions = 0;
     if (targetPortrait) {
-      const candidatePortrait = findPortrait(index, {
+      const candidateSelection = selectPortrait(index, {
         entityType: 'product',
-        entityId: candidate.spu,
+        entityIds: [candidate.spu],
+        ...(params.month !== undefined ? { month: params.month } : {}),
+        ...(params.platform !== undefined ? { platform: params.platform } : {}),
       });
+      const candidatePortrait =
+        candidateSelection.status === 'found' ? candidateSelection.portrait : undefined;
       if (candidatePortrait) {
         const shared = Object.keys(targetPortrait.projections).filter((dimension) =>
           candidatePortrait.projections[dimension],
@@ -344,26 +357,33 @@ export function similarProducts(
  * 品类层级由商品档案的品类字段推导；系列／爆款／IP 层级需要**聚合口径表**
  * （`data/tables/aggregate-groups.csv`），表未接入时返回 undefined。
  * 聚合口径见归一化规则 §5.6。
+ *
+ * 带 `month`（SA-03）时只聚合各成员**覆盖该月**的画像（含全部平台）；
+ * 不带 `month` 时成员有多份画像即视为不可唯一确定，该成员不参与聚合
+ * （MCP 层用 `selectAggregateMembers` 把歧义显式返回给调用方）。
  */
 export function aggregatePortrait(
   index: DataIndex,
-  params: { level: string; key: string },
+  params: { level: string; key: string; month?: string },
 ): NormalizedPortrait | undefined {
-  const members =
-    params.level === 'category'
-      ? index.products.filter((product) => {
-          const category = product.category;
-          const haystack = [category?.l1, category?.l2, category?.l3].filter(Boolean).join('/');
-          return haystack.includes(params.key);
-        })
-      : productsByGroup(index, params.level, params.key);
+  const members = aggregateMembers(index, params.level, params.key);
   if (members.length === 0) return undefined;
 
-  const memberPortraits = members
-    .map((product) =>
-      findPortrait(index, { entityType: 'product', entityId: product.spu }),
-    )
-    .filter((portrait): portrait is Portrait => Boolean(portrait));
+  const memberPortraits = members.flatMap((product) => {
+    const own = index.portraits.filter(
+      (portrait) => portrait.entityType === 'product' && portrait.entityId === product.spu,
+    );
+    if (params.month === undefined) {
+      const selection = selectPortrait({ portraits: own }, {
+        entityType: 'product',
+        entityIds: [product.spu],
+      });
+      return selection.status === 'found' ? [selection.portrait] : [];
+    }
+    const month = params.month;
+    // 与 selectPortrait 同一口径（复核建议 2 升级）：无月份画像按最低层纳入
+    return own.filter((portrait) => portraitLabelCovers(portrait.month, month));
+  });
   if (memberPortraits.length === 0) return undefined;
 
   const dimensions: Portrait['projections'] = {};
@@ -414,6 +434,38 @@ export function aggregatePortrait(
   };
 }
 
+/** 聚合层级的成员商品：品类由档案推导，其余按聚合口径表。 */
+function aggregateMembers(index: DataIndex, level: string, key: string): ProductDossier[] {
+  return level === 'category'
+    ? index.products.filter((product) => {
+        const category = product.category;
+        const haystack = [category?.l1, category?.l2, category?.l3].filter(Boolean).join('/');
+        return haystack.includes(key);
+      })
+    : productsByGroup(index, level, key);
+}
+
+/** 单个成员的画像选择结果（SA-03：聚合前显式暴露歧义）。 */
+export interface AggregateMemberSelection {
+  spu: string;
+  selection: SelectPortraitResult;
+}
+
+/** 逐成员解析聚合画像。MCP 层用它把「成员多份画像」的歧义显式返回给调用方。 */
+export function selectAggregateMembers(
+  index: DataIndex,
+  params: { level: string; key: string; month?: string },
+): AggregateMemberSelection[] {
+  return aggregateMembers(index, params.level, params.key).map((product) => ({
+    spu: product.spu,
+    selection: selectPortrait(index, {
+      entityType: 'product',
+      entityIds: [product.spu],
+      ...(params.month !== undefined ? { month: params.month } : {}),
+    }),
+  }));
+}
+
 /** 按聚合口径表取某层级的成员商品。 */
 function productsByGroup(index: DataIndex, level: string, key: string): ProductDossier[] {
   const groups = index.aggregateGroups;
@@ -429,27 +481,37 @@ function productsByGroup(index: DataIndex, level: string, key: string): ProductD
 /** 商品↔渠道画像差异。**只产出差异，不产出匹配分与评级**（属 P1 匹配内核）。 */
 export function compareProductChannel(
   index: DataIndex,
-  params: { spu: string; channelId: string; month?: string },
+  params: {
+    spu: string;
+    channelId: string;
+    month?: string;
+    /** 商品侧平台消歧（SA-03）。 */
+    productPlatform?: string;
+    /** 渠道侧平台消歧（SA-03）。 */
+    channelPlatform?: string;
+  },
 ): ProductChannelComparison | undefined {
-  const productPortrait = findPortrait(index, {
+  const productSelection = selectPortrait(index, {
     entityType: 'product',
-    entityId: params.spu,
-    ...(params.month ? { month: params.month } : {}),
+    entityIds: [params.spu],
+    ...(params.month !== undefined ? { month: params.month } : {}),
+    ...(params.productPlatform !== undefined ? { platform: params.productPlatform } : {}),
   });
-  if (!productPortrait) return undefined;
+  if (productSelection.status !== 'found') return undefined;
 
-  const channelPortrait = findPortraitByEntityIds(index, {
+  const channelSelection = selectPortrait(index, {
     entityType: 'channel',
     entityIds: channelEntityIds(index, params.channelId),
-    ...(params.month ? { month: params.month } : {}),
+    ...(params.month !== undefined ? { month: params.month } : {}),
+    ...(params.channelPlatform !== undefined ? { platform: params.channelPlatform } : {}),
   });
-  if (!channelPortrait) return undefined;
+  if (channelSelection.status !== 'found') return undefined;
 
-  const diff = diffPortraits(productPortrait, channelPortrait);
+  const diff = diffPortraits(productSelection.portrait, channelSelection.portrait);
   return {
     spu: params.spu,
     channelId: params.channelId,
-    ...(params.month ? { month: params.month } : {}),
+    ...(params.month !== undefined ? { month: params.month } : {}),
     ...diff,
   };
 }

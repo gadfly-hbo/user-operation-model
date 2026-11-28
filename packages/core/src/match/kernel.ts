@@ -1,10 +1,12 @@
 import {
   cosineSimilarity,
   jensenShannonDistance,
+  restrictToCommonLabels,
   toDistribution,
   topLabels,
   topOverlap,
 } from '../index/similarity.js';
+import { parsePeriod } from '../period/parse.js';
 import { CORE_DIMENSION_IDS } from '../portrait/catalog/dimensions.js';
 import {
   DISTRIBUTION_DIMENSIONS,
@@ -14,7 +16,6 @@ import {
   type PriceBandRule,
   type PriceCondition,
 } from './config.js';
-import { isIntervalWindow } from './month.js';
 import type {
   DimensionScore,
   Driver,
@@ -95,7 +96,7 @@ function renderDiagnosis(
     .replace(/\{low\}/g, formatPercent(low));
 }
 
-/** 分布维度的评分。 */
+/** 分布维度的评分（公共标签口径，切片 A · SA-06）。 */
 function scoreDistribution(
   productLabels: Record<string, { share: number }> | undefined,
   channelLabels: Record<string, { share: number }> | undefined,
@@ -110,10 +111,34 @@ function scoreDistribution(
     return { reason: 'empty-distribution' };
   }
 
-  const jsSimilarity = 1 - jensenShannonDistance(productDistribution, channelDistribution);
-  const cosine = cosineSimilarity(productDistribution, channelDistribution);
-  const productTop3 = topLabels(productLabels, 3);
-  const channelTop3 = topLabels(channelLabels, 3);
+  // 只在公共标签的重归一化分布上比较；单侧标签列出但不当作 0
+  const restriction = restrictToCommonLabels(
+    productLabels as Record<string, { share: number }>,
+    channelLabels as Record<string, { share: number }>,
+  );
+  if (!restriction) {
+    return {
+      reason: 'no-common-labels',
+      evidence: {
+        jsSimilarity: 0,
+        cosine: 0,
+        top3Overlap: 0,
+        productTop3: [],
+        channelTop3: [],
+        excludedProductLabels: Object.keys(productLabels)
+          .filter((key) => !(key in channelLabels))
+          .sort(),
+        excludedChannelLabels: Object.keys(channelLabels)
+          .filter((key) => !(key in productLabels))
+          .sort(),
+      },
+    };
+  }
+
+  const jsSimilarity = 1 - jensenShannonDistance(restriction.product, restriction.channel);
+  const cosine = cosineSimilarity(restriction.product, restriction.channel);
+  const productTop3 = topLabels(restriction.productLabels, 3);
+  const channelTop3 = topLabels(restriction.channelLabels, 3);
   const top3Overlap = topOverlap(
     productTop3.map((item) => item.label),
     channelTop3.map((item) => item.label),
@@ -127,6 +152,12 @@ function scoreDistribution(
       top3Overlap,
       productTop3: productTop3.map((item) => ({ label: item.label, share: item.share })),
       channelTop3: channelTop3.map((item) => ({ label: item.label, share: item.share })),
+      ...(restriction.excludedProductLabels.length > 0
+        ? { excludedProductLabels: restriction.excludedProductLabels }
+        : {}),
+      ...(restriction.excludedChannelLabels.length > 0
+        ? { excludedChannelLabels: restriction.excludedChannelLabels }
+        : {}),
     },
   };
 }
@@ -230,7 +261,9 @@ export function scoreMatch(
 
   const flags = {
     productMonthUnknown: product.month.trim() === '',
-    channelApproximate: isIntervalWindow(channel.window ?? channel.month),
+    // 区间与年份画像都按近似口径标注（切片 A · R-7）
+    channelApproximate: parsePeriod(channel.window ?? channel.month).kind === 'window'
+      || parsePeriod(channel.window ?? channel.month).kind === 'year',
     priceMissing: price === undefined,
   };
 

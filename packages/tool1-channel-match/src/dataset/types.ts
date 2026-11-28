@@ -22,7 +22,7 @@ export interface DatasetProduct {
   /** 画像来源平台。 */
   portraitPlatform?: string;
   /** 画像月份匹配方式。 */
-  portraitMatch?: 'exact' | 'window' | 'unknown';
+  portraitMatch?: 'exact' | 'window' | 'year' | 'unknown';
 }
 
 /** 数据集里的渠道。 */
@@ -33,7 +33,7 @@ export interface DatasetChannel {
   /** 所选月的画像；缺失时该渠道不进矩阵。 */
   portrait?: MatchPortraitInput;
   portraitPlatform?: string;
-  portraitMatch?: 'exact' | 'window' | 'unknown';
+  portraitMatch?: 'exact' | 'window' | 'year' | 'unknown';
 }
 
 /** 数据集。 */

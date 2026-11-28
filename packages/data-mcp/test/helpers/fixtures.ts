@@ -104,9 +104,13 @@ export async function createFixtureDataRoot(options: FixtureOptions = {}): Promi
   return root;
 }
 
-async function writeSheet(path: string, rows: (string | number)[][]): Promise<void> {
+async function writeSheet(
+  path: string,
+  rows: (string | number)[][],
+  sheetName = 'Sheet1',
+): Promise<void> {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Sheet1');
+  const sheet = workbook.addWorksheet(sheetName);
   for (const row of rows) sheet.addRow(row);
   await workbook.xlsx.writeFile(path);
 }
@@ -272,6 +276,116 @@ export async function createP0DataRoot(options: P0FixtureOptions = {}): Promise<
     const target = join(root, relativePath);
     mkdirSync(dirname(target), { recursive: true });
     writeCsv(target, rows);
+  }
+
+  return root;
+}
+
+/* ── 切片 A 夹具：多月份／多平台画像 + 按月表数据（SA-03／SA-05） ──────────
+ *
+ * 全部为合成数据：
+ * - D00001 演示账号1：抖音画像 2026-09 与 2026-10 两份（跨月）
+ * - D00002 演示账号2：抖音画像 2507-2606 区间一份
+ * - D00003 演示账号3：2026-10 抖音 + 天猫两份（同月多平台）
+ * - SPU-001：抖音画像 2026-09／2026-10 两份 + 2026-10 天猫一份（跨月且同月多平台）；
+ *   经营指标／漏斗／商品↔渠道成交均有 2026-09 与 2026-10 两个月份
+ */
+export async function createPeriodDataRoot(): Promise<string> {
+  const root = mkdtempSync(join(tmpdir(), 'uom-mcp-period-'));
+  const domains = join(root, 'domains');
+  const douyinDir = join(domains, '07_人群画像', '抖音');
+  const tmallDir = join(domains, '07_人群画像', '天猫');
+  mkdirSync(join(domains, '04_商品信息'), { recursive: true });
+  mkdirSync(join(domains, '02_渠道信息'), { recursive: true });
+  mkdirSync(douyinDir, { recursive: true });
+  mkdirSync(tmallDir, { recursive: true });
+
+  await writeSheet(join(domains, '04_商品信息', '商品宽表.xlsx'), [
+    ['款号', '商品品牌', '年份', '中类', '小类', '吊牌价', '天猫id', '年龄段', '商品定位'],
+    ['SPU-001', '演示品牌', '2026', '短袖T恤', 'T恤', '199', '100001', '18-24岁', 'ACCESS'],
+    ['SPU-002', '演示品牌', '2026', '短袖T恤', 'T恤', '299', '100002', '18-24岁', 'ACCESS'],
+  ]);
+  await writeSheet(join(domains, '02_渠道信息', '渠道店铺宽表.xlsx'), [
+    ['渠道品牌', '一级渠道', '店铺编码', '店铺', '平台', '渠道类型', '渠道等级', '城市', '门店状态', '开店时间'],
+    ['演示品牌', '内容渠道', 'D00001', '演示账号1', '抖音', '抖音', '核心店', '上海', '营业', '2024-01-01'],
+    ['演示品牌', '内容渠道', 'D00002', '演示账号2', '天猫', '天猫', '核心店', '上海', '营业', '2024-01-01'],
+    ['演示品牌', '内容渠道', 'D00003', '演示账号3', '京东', '京东', '核心店', '上海', '营业', '2024-01-01'],
+  ]);
+
+  const genderRows = (male: string, female: string): string[][] => [
+    ['预测性别', '男', male, '100.00'],
+    ['预测性别', '女', female, '100.00'],
+    ['八大消费群体', '都市银发', '3.00%', '110.00'],
+  ];
+
+  writeCsv(join(douyinDir, '2026-09_演示账号1画像数据_抖音.csv'), [
+    ['标签类型', '标签', '2026-09演示账号1-占比', '2026-09演示账号1-tgi'],
+    ...genderRows('40.00%', '60.00%'),
+  ]);
+  writeCsv(join(douyinDir, '2026-10_演示账号1画像数据_抖音.csv'), [
+    ['标签类型', '标签', '2026-10演示账号1-占比', '2026-10演示账号1-tgi'],
+    ...genderRows('30.00%', '70.00%'),
+  ]);
+  writeCsv(join(douyinDir, '2507-2606_演示账号2画像数据_抖音.csv'), [
+    ['标签类型', '标签', '2507-2606演示账号2-占比', '2507-2606演示账号2-tgi'],
+    ...genderRows('50.00%', '50.00%'),
+  ]);
+  writeCsv(join(douyinDir, '2026-10_演示账号3画像数据_抖音.csv'), [
+    ['标签类型', '标签', '2026-10演示账号3-占比', '2026-10演示账号3-tgi'],
+    ...genderRows('20.00%', '80.00%'),
+  ]);
+
+  writeCsv(join(douyinDir, '款号SPU-001_2609_抖音.csv'), [
+    ['标签类型', '标签', '2026-09SPU-001-占比', '2026-09SPU-001-tgi'],
+    ...genderRows('45.00%', '55.00%'),
+  ]);
+  writeCsv(join(douyinDir, '款号SPU-001_2610_抖音.csv'), [
+    ['标签类型', '标签', '2026-10SPU-001-占比', '2026-10SPU-001-tgi'],
+    ...genderRows('45.00%', '55.00%'),
+  ]);
+  writeCsv(join(douyinDir, '款号SPU-002_2610_抖音.csv'), [
+    ['标签类型', '标签', '2026-10SPU-002-占比', '2026-10SPU-002-tgi'],
+    ...genderRows('10.00%', '90.00%'),
+  ]);
+
+  await writeSheet(
+    join(tmallDir, '2026-10_演示账号3画像数据_天猫.xlsx'),
+    [['标签类型', '一级标签(标签值)', '占比'], ['预测性别', '男', '25.00%'], ['预测性别', '女', '75.00%']],
+    '明细',
+  );
+
+  const include = [
+    'tables/product-performance.csv',
+    'tables/product-channel.csv',
+    'tables/funnel.csv',
+    'tables/aggregate-groups.csv',
+  ];
+  const rows: Record<string, string[][]> = {
+    'tables/product-performance.csv': [
+      ['款号', '月份', '零售额', '零售量', '售罄率', '退货率', '退款率', '毛利率', 'UV', '转化率'],
+      ['SPU-001', '2026-09', '6000', '30', '80%', '5%', '3%', '45%', '5000', '2.5%'],
+      ['SPU-001', '2026-10', '12000', '40', '85%', '4%', '2%', '46%', '6000', '3.0%'],
+    ],
+    'tables/product-channel.csv': [
+      ['款号', '店铺编码', '月份', '零售额', '零售量'],
+      ['SPU-001', 'D00001', '2026-09', '6000', '30'],
+      ['SPU-001', 'D00001', '2026-10', '12000', '40'],
+    ],
+    'tables/funnel.csv': [
+      ['款号', '月份', '阶段', '浏览', '收藏', '加购', '购买', '直接购买', '退货'],
+      ['SPU-001', '2026-09', 'launch', '1000', '100', '50', '40', '10', '2'],
+      ['SPU-001', '2026-10', 'growth', '1200', '150', '60', '55', '15', '3'],
+    ],
+    'tables/aggregate-groups.csv': [
+      ['款号', '系列', '爆款组', 'IP'],
+      ['SPU-001', '基础系列', '爆款A', '-'],
+      ['SPU-002', '基础系列', '爆款B', '-'],
+    ],
+  };
+  for (const relativePath of include) {
+    const target = join(root, relativePath);
+    mkdirSync(dirname(target), { recursive: true });
+    writeCsv(target, rows[relativePath]!);
   }
 
   return root;
