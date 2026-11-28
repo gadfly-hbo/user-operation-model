@@ -95,7 +95,7 @@ node scripts/verify-modelevol-provenance.mjs   # 固化副本与溯源文档一�
 ## 7. v0.6 协议基线（P2-6 实跑冻结）
 
 > 数据：**归档固化**的 25Q4 intake（93 款，固化包 `v06-intake-25q4`）；
-> 协议：v0.6 五阶段移植（prepare→folds→ablation→select→evaluate→validate）；
+> 协议：v0.6 六阶段移植（prepare→folds→ablation→select→evaluate→validate）；
 > 脚本：`npm run pipeline:v06`（本地运行，需固化数据；CI 不跑）。
 > **本节数字是本项目 v0.6 移植自测结果，不是归档结论**（P2 规格 §7 第 4／5 条：
 > v0.6 的验收结论与勘误前手工数值均**不继承**）。
@@ -152,7 +152,20 @@ node scripts/verify-modelevol-provenance.mjs   # 固化副本与溯源文档一�
 fail-closed 校验）已跑通并通过；但**§9.2 合规特征集下的模型未达 v0.6 验收门槛**。
 这是本轮如实记录的事实，**不得**被表述为「v0.6 验收通过」。
 
-### 7.4 限制
+### 7.4 门槛结论入包与登记（2026-11-28）
+
+- 模型包 `manifest.gateConclusion` 由导出器从管线阶段 04／05／06 的**实际结果**派生
+  （选中变体、门槛总判定、逐门槛结果、gate5 由 V1–V12 判定、宏平均 js_lift、
+  系数区与冻结 folds 双 sha256），缺任一证据即拒绝导出（测试锁定，见
+  `packages/tool2-portrait-predict/test/export-model-package.test.ts` 的「门槛结论」组）。
+- 该包已按 P2-8 登记 model-mlflow：**Staging**，门槛结论同时写入账本 run params；
+  **Stage 上限 Staging**——晋级 Production 需 P2-13（用户真实数据重训过生产门）
+  并另获用户授权（晋级走 Registry，不回写包内 manifest）。
+- 系数区 sha256 冻结值 `79669a0f30938c0b837589998adc4270d093050bd4c980400e76ee357568d6fa`、
+  冻结 folds sha256 `2ca273cb2a2b14dff9d2ae857e170aa02db89c0f50e36ced84f2625f4087ad22`
+  随门槛结论写入 manifest 与账本，复跑（`npm run pipeline:v06`）必须逐位重现。
+
+### 7.5 限制
 
 - 93 款、单账号、单季度，无同平台内时间留出；结论属小样本。
 - 基线 JS 已达 0.9092（单账号人群高度同源），绝对提升幅度天然很小。

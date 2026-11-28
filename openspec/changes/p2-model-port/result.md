@@ -1,9 +1,14 @@
 # P2-Model-Port 结果记录
 
 > 规格：[spec.md](spec.md)（状态：已确认，2026-11-27；D-P2-1 = 方案 A）
-> 累计实际范围：**P2-2（固化与溯源）**、**P2-3（模型公共库）**、**P2-4（v0.4 管线移植 + 忠实门）**、**P2-5（§9.2 合规特征集 + 合规基线）**、**P2-6（v0.6 六阶段移植）**、**P2-7（模型导出器 + 黄金测试）**。P2-8 起未开工。
+> 累计实际范围：**P2-2（固化与溯源）**、**P2-3（模型公共库）**、**P2-4（v0.4 管线移植 + 忠实门）**、**P2-5（§9.2 合规特征集 + 合规基线）**、**P2-6（v0.6 六阶段移植）**、**P2-7（模型导出器 + 黄金测试）**、**P2-8（model-mlflow 登记，Staging）**。P2-11 起未开工。
 > 执行分支：`work/p2-model-port`（独立工作树 `/tmp/uom-wt-p2`）。
 > 原始日志：本工作树 `.local/p2/`（该目录被 `.gitignore` 的 `*.local` 规则忽略，不入库）。
+> **证据丢失说明（2026-11-28）**：本工作树曾被 /tmp 清理删除后由主 agent 重建——git 提交完好，
+> 但 `.local/` 内**前几轮的 RED 失败日志随工作树清理丢失、不可复得**；`models/`（模型包）已由
+> `npm run pipeline:v06` 重跑再生（V9 系数区 sha256 逐位复现，见 §12.1）。
+> 历史 RED 不补造记录，其结论以本文件当时记录的命令与计数为凭（§3.3／§4.4／§10.5）；
+> 本轮（第四单）新写的测试有本轮真实 RED 留档（§12.2、`.local/p2/red-gate-conclusion.log`）。
 
 ## 1. 任务状态
 
@@ -15,9 +20,9 @@
 | P2-5 | §9.2 合规特征集 + 合规基线 | **PASS** | M06 / M07 | 见 §5 |
 | P2-6 | v0.6 六阶段移植 | **PASS**（管线）／门槛未达标（如实记录） | M08 | 见 §10 |
 | P2-7 | 导出器 + 黄金测试 | **PASS** | M09 | 见 §11 |
-| P2-8 | model-mlflow 登记（Staging） | **NOT_RUN** | M10 | 本轮未开工（登记需另获授权） |
-| P2-9 | 文档与 result | 部分完成（本文件 + 溯源文档 + 基线文档） | — | 其余随 P2-8 |
-| P2-10 | 全量检查 | 见 §7（本轮全量检查已跑；断网自检 NOT_RUN） | M11 / M13 | 见 §7 |
+| P2-8 | model-mlflow 登记（Staging） | **PASS**（Staging；门槛未过如实入账，不得晋级） | M10 | 见 §12 |
+| P2-9 | 文档与 result | 部分完成（本文件 + 溯源文档 + 基线文档；第四单已补 §12／§13 与门槛结论入档） | — | 其余随独立复核收尾 |
+| P2-10 | 全量检查 | 见 §7（前三轮 + 第四单一轮全量检查；断网自检 NOT_RUN，原因见 §7／§13.4） | M11 / M13 | 见 §7／§13.4 |
 | P2-11 | 独立复核 | **NOT_RUN** | — | 须由 `SDD·TDD 独立复核者` 执行，本轮作者不自评 |
 | P2-12 | PR / CI / squash 合并 | **NOT_RUN** | — | 本轮不 push、不开 PR |
 | P2-13 | 用户数据到位后生产重训 | **NOT_RUN** | M07 | 等 P0 数据 |
@@ -304,6 +309,27 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 | 真实数据路径验证 | — | **NOT_RUN**（工程规范 §4.4：真实商品属性 → 预测画像 → 匹配全链路属 P2-13；本轮跑的是**归档固化数据**） |
 | 归档只读性 | `git -C /Users/huangbo/Dev/Archive/ModelEvol status --short` | **PASS**（归档工作树无源码/数据改动；本轮全程只读） |
 
+### 7.2 第四单一轮（2026-11-28：归位重构 + 门槛结论入包 + P2-8 登记，本轮追加）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 构建 | `npm run build` | **PASS**（退出码 0；`strict` + `noUncheckedIndexedAccess` 无报错） |
+| 单测（全量） | `npm test` | **PASS**（退出码 0；`tests 324 / pass 324 / fail 0`；本轮新增 7 条门槛结论用例） |
+| 忠实门（回归） | `UOM_ARCHIVE_FIXED_ROOT=<主仓>/data/archive-modelevol/v04-holdout npm run test:fidelity-v04` | **PASS**（退出码 0；两组数字容差 0 逐位复现：0.6957/0.9155/0.0825 与 0.7754/0.9300/0.0759，泄漏门禁 5/5 × 2 组；**未改动任何冻结数字**） |
+| v0.6 六阶段实跑 | `npm run pipeline:v06` | **PASS**（退出码 0；V9 系数区 sha256 `79669a0f30938c0b…` 与 V4 冻结 folds `2ca273cb2a2b14df…` 归位重构后**逐位不变**；12 条校验全 PASS；门槛结论 FAIL_NOT_POSITIVE 如实复现） |
+| 溯源校验 | `node scripts/verify-modelevol-provenance.mjs` | **PASS**（退出码 0；5 包一致） |
+| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS**（99 条相对链接，错误 0，告警 0） |
+| 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | **PASS**（索引中无业务数据目录、数据文件或超大文件） |
+| 依赖审计 | `npm audit --audit-level=high` | **PASS**（found 0 vulnerabilities；本轮未新增任何依赖） |
+| 断网自检 | `npm run offline-check` | **NOT_RUN**（守卫自检段 PASS：13 个出网入口全部被拦截并归因；`offline-e2e` 段因工作树 `data/` 无 `domains`/`source` 子目录失败——与前几轮同因，工作树无真实业务数据，按发单要求记 NOT_RUN，不把守卫段局部通过写成整体通过） |
+| 工具1 黄金用例 | `npm run test:golden` | **NOT_RUN**（缺 `UOM_REFERENCE_ROOT`；本轮未触及 `packages/core/src/match/**` 评分逻辑） |
+| model-mlflow 登记 | `node scripts/register-model-mlflow.mjs`（本地账本 127.0.0.1:5021） | **PASS**（`uom-tool2-portrait-v06` **v1** · Staging · READY；run `eb3855e624c5439d9829ca840510c6d3` FINISHED；门槛结论入 run params；读回核对与包字节三方一致；详见 §12） |
+| CI | — | **NOT_RUN**（本轮不 push、不开 PR） |
+| 独立复核 | — | **NOT_RUN**（须由未参与本候选的 `SDD·TDD 独立复核者` 执行；作者不自评；P2-11 由主 agent 另派） |
+| 真实数据路径验证 | — | **NOT_RUN**（工程规范 §4.4：真实商品属性 → 预测画像 → 匹配全链路属 P2-13；本轮跑的是**归档固化数据**） |
+| 归档只读性 | `git -C /Users/huangbo/Dev/Archive/ModelEvol status --short` | **PASS**（仅原有 `.DS_Store` 噪声，无源码/数据改动；本轮全程只读） |
+| model-mlflow 只读性 | `git -C <model-mlflow> status --short` | **PASS**（登记后其 git 工作树干净——账本 store `workspace/mlflow/` 与交付 `workspace/exports/` 均为该仓 gitignore 区，未触碰其代码本体/配置/既有条目） |
+
 ## 8. 与 spec 的偏差 / 需要决定的事项
 
 1. **模型公共库范围略窄于 spec §1 交付物表述**：spec §1 写「单一 Ridge、单一指标、折内词表、特征抽取（词典外置为配置）」，本轮按发单只交付前 3 件；「特征抽取」与「词典外置为配置」留待 P2-4／P2-6。**需用户确认**：是否把「特征抽取」单列为 P2-3 的缺口。
@@ -335,9 +361,15 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
     `packages/core/src/index.ts` 又不在 spec §6 允许修改路径内，工具2 无法 `import '@uom/core/normalize/portrait-md'`；
     落在 `model/` 下即可用**已获授权**的 `./model/*` 子路径引用，无需新增授权。
     **需裁定**：是否追认该落位；或授权把 `"./normalize/*"` 加入 core 的 exports 并把文件移回 `normalize/`（本项目建议后者，归位更符合 spec 意图）。
+    **【处置 2026-11-28，用户裁定一】已归位**：文件移回 spec 指定的 `packages/core/src/normalize/portrait-md.ts`，
+    `packages/core/package.json` 追加 `exports["./normalize/*"]`（与第 8 条同一追认模式，spec §6 已同步登记）；
+    行为不变由 V9/V4 双哈希逐位复现证明（§13.1）。
 14. **★ 新增转发口 `packages/core/src/model/xlsx-rows.ts`**：只 `export { findHeaderRow, readXlsxRows } from '../normalize/xlsx.js'`，
     **不含任何实现**，目的是让工具2 引用到 core 的**同一份** XLSX 读取实现（M04「解析零新增」要求）而不必新增 exports 授权。
     若按第 13 条裁定把 `./normalize/*` 加入 exports，该转发口即可删除。
+    **【处置 2026-11-28，用户裁定一】已删除**：`./normalize/*` 开放后该转发口失去存在理由，
+    按项目纪律删除而非留壳；`01-prepare-dataset.ts` 改为直接 `import '@uom/core/normalize/xlsx'`
+    （同一份实现，无第二份解析器）。
 15. **★ 归档 folds 的分层键含人工字段**：冻结 `folds.json` 的 `stratify_key` 是 `categoryGroup x genderCorrected`，
     其中「性别修正」属人工字段。本移植**按 M08 要求把 folds 当作冻结输入消费**（只读 + 校验，不重生成），
     该字段**不进入预测路径**（特征抽取只读 §9.2 白名单）。但若将来要重做分层（例如改用纯客观字段分层），
@@ -347,10 +379,16 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
     按 P2 规格 §7 第 4 条，v0.6 的验收结论本就**不继承**，故这不是「回归」，而是本移植自测的真实结论。
     **需裁定**：生产策略——是否接受「合规特征集下收益主要落在购买力／策略人群／城市等级三个维度」，
     或在 P2-13 用用户真实数据重估（归档 25Q4 单账号小样本结论不可外推）。
+    **【处置 2026-11-28，用户裁定二】门槛未过的登记处置**：用户授权写入 model-mlflow 账本，
+    但门槛未过必须如实入账本与 manifest——`manifest.gateConclusion` 由管线实际结果派生（§12／§13.2），
+    门槛结论同时写入账本 run params；**Stage 只到 Staging**，晋级 Production 需 P2-13 真实数据重训
+    并另获授权（晋级走 Registry，不回写包内 manifest）。生产策略本身仍待 P2-13 数据到位后重估。
 17. **`models/` 加入 `.gitignore`**：spec §6 把 `models/**` 定义为「gitignore：登记副本」，但仓库 `.gitignore` 原本**没有**该规则。
     本轮按 §7「模型工件一律不入库」补上 `models/`（模型包与管线产物均落在该区，不入 git）。
 18. **新增 `scripts/v06-pipeline.mjs` 与根 `package.json` 的 `pipeline:v06`**：`scripts/**` 未在 spec §6 明列，
     本轮沿用 P2-4 的 `scripts/fidelity-v04.mjs` 先例（同一变更内新增的门禁脚本）。**需追认该路径扩展**。
+    **【处置 2026-11-28，用户已追认】**：spec §6 已同步登记 `scripts/**` 与根 `package.json`／`.gitignore`
+    （2026-11-28 提交 `7f3e5e9`）；本轮在其上新增 `scripts/register-model-mlflow.mjs`（P2-8 登记入口）。
 19. **v0.6 归档数字未逐值复现（NOT_PROVED）**：归档的 `oof_macro_js_lift 0.006`、`candidate_not_locked`
     与勘误前 JS 手工数值均在 spec §7 第 4／5 条的**不继承清单**内，且归档使用的是**含人工字段**的特征集。
     本移植不设「复现归档数字」的断言，也**未**为对齐而放宽或造假；本轮产出的是**合规特征集下自测数字**（§10.4）。
@@ -391,6 +429,18 @@ P2-6／P2-7 一轮新增（tracked）：
 - `packages/tool2-portrait-predict/test/pipeline-v06.test.ts`（26 条）、`test/export-model-package.test.ts`（12 条）
 - `scripts/v06-pipeline.mjs`（六阶段端到端实跑 + 模型包导出；见 §8 第 18 条）
 - 根 `package.json`（本轮新增 `pipeline:v06`）、`.gitignore`（本轮新增 `models/`；见 §8 第 17 条）
+
+P2-8／第四单一轮新增与变更（tracked）：
+
+- `scripts/register-model-mlflow.mjs`（P2-8 登记入口：与 Studio Host finalize 相同的本地 MLflow REST 账本序列；见 §12）
+- `packages/core/src/normalize/portrait-md.ts`（由 `model/portrait-md.ts` 归位移入，git mv；见 §8 第 13 条处置）
+- `packages/core/src/model/xlsx-rows.ts`（**已删除**：`./normalize/*` 开放后转发壳失去存在理由；见 §8 第 14 条处置）
+- `packages/core/package.json`（exports 增补 `"./normalize/*"`；§6 已授权）
+- `packages/tool2-portrait-predict/src/export/model-package.ts`（必填 `gateConclusion` 证据与派生逻辑）
+- `packages/tool2-portrait-predict/test/export-model-package.test.ts`（新增「门槛结论」组 7 条）
+- `packages/tool2-portrait-predict/src/pipeline/v06/01-prepare-dataset.ts`、`packages/core/test/portrait-md.test.ts`（import 归位更新）
+- `scripts/v06-pipeline.mjs`（把阶段 04／05／06 实跑结果与双哈希传入导出器）
+- `docs/match-model-baseline.md`（增补 §7.4 门槛结论入包与登记）
 
 产物（**不在 git**，`.gitignore` 的 `models/` 命中）：
 
@@ -550,3 +600,88 @@ npm run build
 npm run pipeline:v06        # 六阶段实跑 + 模型包导出（需固化数据；本地运行，CI 不跑）
 npm test                    # 含黄金用例与字节一致用例（合成夹具，CI 可跑）
 ```
+
+---
+
+## 12. P2-8 model-mlflow 登记（M10，2026-11-28）
+
+> 用户裁定（2026-11-28）：授权写入 `~/Dev/Projects/model-mlflow` 账本，但**门槛未过必须如实写进账本与
+> manifest**，Stage 只到 **Staging**，不得晋级 Production（晋级需 P2-13 真实数据重训并另获授权）。
+
+### 12.1 登记入口与约束遵守
+
+| 项 | 内容 |
+| --- | --- |
+| 登记入口 | model-mlflow **既有的本地 MLflow REST 账本**（与 Studio Host `finalize_training` 同一入口、同一 experiment `mps-chat-training`、同一登记序列）；入口脚本 `scripts/register-model-mlflow.mjs` |
+| 不改造约束 | **未修改** model-mlflow 代码本体、配置与既有条目（工程规范 §8.2）：MLflow server 由其启动器同款命令供给（`workspace/spikes/mlflow-chain/.venv` 的 mlflow 3.16.1，store=`workspace/mlflow/mlflow.db`，artifact root=`workspace/mlflow/mlflow-artifacts`，仅绑 `127.0.0.1:5021`）；该 store 与 `workspace/exports/` 均为该仓 gitignore 区，登记后其 git 工作树干净 |
+| 副作用收口 | 登记完成后已停掉本次供给的 MLflow server（机器回到任务前状态；下次启动器运行按其「复用/供给」逻辑自理） |
+
+### 12.2 登记结果（读回核对）
+
+| 项 | 值 |
+| --- | --- |
+| Registry 条目身份 | `uom-tool2-portrait-v06` **v1**（新 RegisteredModel，版本号 = 既有最大 + 1） |
+| Stage | **Staging**（读回 `current_stage=Staging`，`status=READY`；「训练自动入 Staging、晋级是用户动作」的契约如实执行） |
+| 训练 run | `eb3855e624c5439d9829ca840510c6d3`（FINISHED，experiment `mps-chat-training`） |
+| 包契约校验 | 恰好 3 文件（`predict.mjs`/`manifest.json`/`README.md`）、`formatVersion=1`、`usage.outputs` 32 条扁平列、`model.stage=Staging` |
+| `data_sha256`（宿主计算） | `65cf98f6eeb889868be8edce71449d2ebaa510dbca3a0be3397a876b049e48bf`（对管线阶段 01 原始输入 `models/work-v06/dataset.json` 宿主侧独立重算，与 manifest 一致） |
+| 门槛结论（账本 run params 原文） | `selected_variant=V1_minus_subcat`；`selection_gate=FAIL_NOT_POSITIVE`；`gate_gate1_all_dims_positive_significant=FAIL`；`gate_gate2_high_variability_dims=FAIL`；`gate_gate3_expansion_gain_over_control=PASS`；`gate_gate4_fold_stability=FAIL`；`gate_gate5_frozen_inputs_and_fail_closed=PASS`（阶段 06 V1–V12 判定，12/12 pass）；`macro_js_lift=0.0095752873551487`；`frozen_folds_sha256=2ca273cb2a2b14df…`；`coefficient_region_sha256=79669a0f30938c0b…`；`stage_ceiling=Staging`；`promotion_policy=Stage 上限 Staging；本包由归档数据训练且门槛未过，晋级 Production 需 P2-13（用户真实数据重训过生产门）并另获用户授权（晋级走 model-mlflow Registry，不回写本包 manifest）` |
+| 包字节三方一致 | 本项目 `models/uom-tool2-portrait-v06/v1/` ↔ Registry source（run artifacts `packages/uom-tool2-portrait-v06-v1/`）↔ 交付路径 `workspace/exports/uom-tool2-portrait-v06/v1/`，3 文件 sha256 逐位一致 |
+| 登记前置 fail-closed | manifest 门槛结论与 `models/work-v06/validation.json` 的管线产物一致（`selection_gate`、`selectedVariant` 逐项核对）才放行；缺结论、stage 非 Staging、data_sha256 重算不一致均拒绝登记 |
+| `models/` 副本 | 保持 gitignore 不入库（`.gitignore` 的 `models/` 命中） |
+
+## 13. 第四单执行记录（2026-11-28：A 归位 + B 门槛结论 + C 登记 + D 收尾）
+
+### 13.1 A 归位重构（对应 §8 第 13／14 条处置）
+
+- `git mv packages/core/src/model/portrait-md.ts packages/core/src/normalize/portrait-md.ts`（spec §6 指定落位）；
+  更新 `packages/core/test/portrait-md.test.ts` 与 `01-prepare-dataset.ts` 的 import；
+  `packages/core/package.json` 增补 `exports["./normalize/*"]`；**删除** `model/xlsx-rows.ts` 转发壳
+  （`./normalize/*` 开放后失去存在理由；本项目纪律：被取代的东西删除而不是留壳）。
+- **行为不变实证**：重构后 `npm run pipeline:v06` 的系数区 sha256 仍为
+  `79669a0f30938c0b837589998adc4270d093050bd4c980400e76ee357568d6fa`（V9），
+  冻结 folds sha256 仍为 `2ca273cb2a2b14dff9d2ae857e170aa02db89c0f50e36ced84f2625f4087ad22`（V4）——**两个哈希逐位不变**，
+  阶段 01–06 与 12 条 fail-closed 校验全 PASS。日志：`.local/p2/pipeline-v06-after-A.log`。
+
+### 13.2 B manifest 补记门槛结论（登记前置）
+
+- **TDD 真 RED**：先写 7 条门槛结论测试再实跑——`tests 18 / pass 12 / fail 6`，
+  6 条失败**全部为行为失败**（manifest 无 `gateConclusion`、缺结论不抛错、Production 不被拒、
+  哈希/宏平均不校验等），非导入或环境失败。留档：`.local/p2/red-gate-conclusion.log`。
+- **GREEN 最小实现**：`buildV06ModelPackage` 新增必填 `gateConclusion` 证据（阶段 04 selection／
+  阶段 05 acceptance+macroJsLift／阶段 06 validationChecks／冻结 folds 与系数区双 sha256），
+  `manifest.gateConclusion` 全部**派生**自该证据（不手写数值）；缺任一证据、gate1–gate4 未判定、
+  阶段 06 校验缺失、哈希非法、宏平均非有限、门槛未过而写 Production → 一律抛错。
+  `scripts/v06-pipeline.mjs` 把本次实跑的阶段 04／05／06 结果与双哈希传入导出器。
+- **回归全绿**：该测试组 18/18（`.local/p2/green-gate-conclusion.log`）；全量 `npm test` 324/324；
+  管线复跑后 V9／V4 双哈希仍逐位不变，黄金测试（容差 0）与连跑字节一致用例全绿；
+  **未改动**已冻结的 v0.4 忠实门数字（0.6957/0.9155/0.0825）与合规基线数字（0.7754/0.9300/0.0759）。
+- 实际入包结论见 §12.2 与 `docs/match-model-baseline.md` §7.4。
+
+### 13.3 历史轮 RED 留档丢失的如实说明
+
+工作树曾被 /tmp 清理删除后重建：`.local/` 内**前几轮（P2-3／P2-4／P2-6／P2-7）的 RED 失败日志不可复得**，
+本轮**不补造历史 RED 记录**；历史 RED 结论以本文件 §3.3／§4.4／§10.5 当时记录的命令与计数为凭
+（每轮 RED 均为「骨架函数抛 not implemented」的行为失败口径，非环境失败）。
+`models/` 模型包已由 `npm run pipeline:v06` 重跑再生，V9 系数区 sha256 逐位复现冻结值（§13.1），
+即再生包与丢失前的包在系数区字节一致。
+
+### 13.4 未做项与 NOT_RUN 汇总（第四单）
+
+- `npm run offline-check`：**NOT_RUN**（守卫自检段 PASS：13 个出网入口全部拦截归因；
+  `offline-e2e` 段因工作树 `data/` 无真实业务数据失败——与前几轮同因，不为变绿拷数据）。
+- `npm run test:golden`：**NOT_RUN**（缺 `UOM_REFERENCE_ROOT`；本轮未触及匹配内核）。
+- P2-11 独立复核、P2-12 PR/CI/squash 合并、P2-13 真实数据重训与晋级、26Q4 回测：**NOT_RUN**
+  （P2-11 由主 agent 另派非作者 agent；本轮不 push、不开 PR）。
+
+### 13.5 本轮范围外发现（编号接 §8 第 19 条）
+
+20. **`docs/match-model-baseline.md` §7 引语把 v0.6 协议写成「五阶段」**（括号里实际列了六个阶段，
+    §7.3 结论段也写「六阶段」）：文字瑕疵，不影响数字与结论；本轮已随文档收尾一并修正为「六阶段」，
+    并在 §7.4 增补门槛结论入包与登记的记录。
+21. **model-mlflow 账本 store 在本机属首次创建**：`workspace/mlflow/mlflow.db` 此前不存在
+    （本机从未跑过启动器的正式供给分支，既有 `e2e-mlflow`/`spikes` 两个 store 属测试/试验），
+    本次登记即该账本的第一个条目。若用户在其他机器已有正式账本（启动器注释称数据随 git 同步），
+    需注意两机账本合流策略——本机此账本现含且仅含本次 `uom-tool2-portrait-v06` v1 条目。
+22. **MLflow param 值长度上限依赖**：登记把 `promotion_policy` 全文与 32 列 `targets` JSON 写进 run params
+    （mlflow 3.16.1 实测接受）。若未来 model-mlflow 升级收紧 param 长度，登记脚本需改走 tags/artifact。
