@@ -51,6 +51,12 @@ function toMatchKind(kind: 'month' | 'window' | 'year'): PortraitMatchKind {
   return kind === 'month' ? 'exact' : kind;
 }
 
+/** 画像月份标签对应的匹配形态（period 层唯一判定，查询层共用）。 */
+export function portraitMatchKind(month: string): PortraitMatchKind {
+  const period = parsePeriod(month);
+  return period.kind === 'unknown' ? 'unknown' : toMatchKind(period.kind);
+}
+
 /** 画像标签相对所选月的匹配层（null 表示不覆盖）。 */
 function tierOf(portrait: NormalizedPortrait, month: string): PortraitMatchKind | null {
   const period = parsePeriod(portrait.month);
@@ -60,8 +66,7 @@ function tierOf(portrait: NormalizedPortrait, month: string): PortraitMatchKind 
 
 /** 画像自身标签对应的匹配形态。 */
 function kindOf(portrait: NormalizedPortrait): PortraitMatchKind {
-  const period = parsePeriod(portrait.month);
-  return period.kind === 'unknown' ? 'unknown' : toMatchKind(period.kind);
+  return portraitMatchKind(portrait.month);
 }
 
 /** 画像的来源平台（platformLabels 的第一个键）。 */

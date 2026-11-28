@@ -7,16 +7,20 @@ import {
   compareProductChannel,
   DIAGNOSIS_TYPE_ALIASES,
   findChannel,
-  findPortrait,
-  findPortraitByEntityIds,
   findProduct,
   FUNNEL_PHASE_ALIASES,
   listChannels,
   listProducts,
+  parsePeriod,
+  periodCovers,
+  portraitPlatform,
   resolveChannelIds,
   searchByTag,
+  selectAggregateMembers,
+  selectPortrait,
   similarProducts,
   type DataIndex,
+  type NormalizedPortrait,
 } from '@uom/core';
 import { err, ok, toMcp, type ToolResult } from './result.js';
 
@@ -81,6 +85,83 @@ export function createServer(index: DataIndex): McpServer {
     );
   };
 
+  /** 画像查询参数（切片 A · SA-03：歧义显式返回，不按平台名偷选）。 */
+  interface PortraitQuery {
+    /** 实体的显示名（错误消息用），如「渠道 D00001」。 */
+    label: string;
+    entityType: 'channel' | 'product';
+    entityIds: string[];
+    month?: string;
+    platform?: string;
+    /** 平台消歧参数名（compare 的两侧分别是 productPlatform／channelPlatform）。 */
+    platformParam?: string;
+  }
+
+  /**
+   * 用 core 的 `selectPortrait` 解析画像；找不到或歧义时直接产出错误结果。
+   * **任何情况不回退到相邻月份。**
+   */
+  const selectPortraitOrError = (
+    query: PortraitQuery,
+  ): { portrait: NormalizedPortrait } | { error: ToolResult<never> } => {
+    const selection = selectPortrait(index, {
+      entityType: query.entityType,
+      entityIds: query.entityIds,
+      ...(query.month !== undefined ? { month: query.month } : {}),
+      ...(query.platform !== undefined ? { platform: query.platform } : {}),
+    });
+    if (selection.status === 'found') return { portrait: selection.portrait };
+    if (selection.status === 'ambiguous') {
+      const platformParam = query.platformParam ?? 'platform';
+      if (selection.months.length > 1) {
+        const suffix =
+          selection.platforms.length > 1 ? `；平台：${selection.platforms.join('、')}` : '';
+        return {
+          error: err(
+            'ambiguous',
+            `${query.label} 有多份画像（月份：${selection.months.join('、')}${suffix}）`,
+            `传 month 参数（可用月份：${selection.months.join('、')}）`,
+          ),
+        };
+      }
+      return {
+        error: err(
+          'ambiguous',
+          `${query.label} 在 ${selection.months[0] ?? ''} 有多平台画像（平台：${selection.platforms.join('、')}）`,
+          `传 ${platformParam} 参数消歧（可选平台：${selection.platforms.join('、')}）`,
+        ),
+      };
+    }
+    const months = availableMonths(index, query.entityType, query.entityIds);
+    if (months.length === 0) {
+      return {
+        error: err('not-found', `${query.label} 在索引中没有人群画像`),
+      };
+    }
+    if (query.month !== undefined) {
+      return {
+        error: err(
+          'month-mismatch',
+          `${query.label} 在 ${query.month} 无画像`,
+          `可用月份：${months.join('、')}`,
+        ),
+      };
+    }
+    return {
+      error: err(
+        'not-found',
+        `${query.label} 没有可唯一确定的画像`,
+        `可用月份：${months.join('、')}`,
+      ),
+    };
+  };
+
+  /** 记录里只保留指定月份键（缺失返回 undefined）。 */
+  function pickMonthKey<T>(record: Record<string, T> | undefined, month: string): Record<string, T> | undefined {
+    const hit = record?.[month];
+    return hit ? { [month]: hit } : undefined;
+  }
+
   // ── 渠道 ───────────────────────────────────────────────────
   register(
     'list_channels',
@@ -122,42 +203,32 @@ export function createServer(index: DataIndex): McpServer {
       inputSchema: z.object({
         channelId: z.string().describe('店铺编码'),
         month: z.string().optional().describe('月份 YYYY-MM；不传时该渠道须只有一份画像'),
+        platform: z.string().optional().describe('平台消歧：抖音／天猫／京东（同月多平台时必传）'),
       }),
     },
     (args) => {
       const channelId = String(args.channelId ?? '');
-      const month = typeof args.month === 'string' ? args.month : undefined;
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const platform = typeof args.platform === 'string' && args.platform !== '' ? args.platform : undefined;
       const channel = findChannel(index, channelId);
       if (!channel) {
         return err('not-found', `渠道 ${channelId} 不在索引中`, '用 list_channels 查看可用渠道');
       }
       const entityIds = channelEntityIds(index, channelId);
-      const portrait = findPortraitByEntityIds(index, {
+      const selection = selectPortraitOrError({
+        label: `渠道 ${channelId}`,
         entityType: 'channel',
         entityIds,
-        ...(month ? { month } : {}),
+        month,
+        platform,
       });
-      if (!portrait) {
-        const months = availableMonths(index, 'channel', entityIds);
-        if (months.length === 0) {
-          return err(
-            'not-found',
-            `渠道 ${channelId} 在索引中没有人群画像`,
-            '渠道存在但无画像数据；用 list_channels 看画像覆盖情况',
-          );
-        }
-        return err(
-          month ? 'month-mismatch' : 'ambiguous',
-          month
-            ? `渠道 ${channelId} 在 ${month} 无画像`
-            : `渠道 ${channelId} 有多份画像，必须指定 month`,
-          `可用月份：${months.join('、')}`,
-        );
-      }
+      if ('error' in selection) return selection.error;
+      const portrait = selection.portrait;
       return ok({
         channelId,
         channel,
         month: portrait.month,
+        platform: portraitPlatform(portrait),
         sampleSize: portrait.sampleSize,
         coverage: portrait.coverage,
         projections: portrait.projections,
@@ -308,23 +379,79 @@ export function createServer(index: DataIndex): McpServer {
     'get_product_dossier',
     {
       title: '取单品全量档案',
-      description: '取单品的属性、FAB、画像、漏斗与经营指标。',
+      description: '取单品的属性、FAB、按月画像、漏斗与经营指标。',
       inputSchema: z.object({
         spu: z.string().describe('款号'),
+        month: z.string().optional().describe('月份 YYYY-MM；不传时返回全部月份'),
       }),
     },
     (args) => {
       const spu = String(args.spu ?? '');
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
       const product = findProduct(index, spu);
       if (!product) {
         return err('not-found', `商品 ${spu} 不在索引中`, '用 list_products 查看可用商品');
       }
-      const portrait = findPortrait(index, { entityType: 'product', entityId: spu });
+      const own = index.portraits.filter(
+        (portrait) => portrait.entityType === 'product' && portrait.entityId === spu,
+      );
+      const selected = month
+        ? own.filter((portrait) => periodCovers(parsePeriod(portrait.month), month))
+        : own;
+      const portraits = selected.map((portrait) => ({
+        month: portrait.month,
+        platform: portraitPlatform(portrait),
+        projections: portrait.projections,
+      }));
+
+      // 带 month 时四类数据都只含覆盖该月的记录（SA-05）
+      const performance = month ? pickMonthKey(product.performance, month) : product.performance;
+      const funnel = month ? pickMonthKey(product.funnel, month) : product.funnel;
+      const channelPerformance = month
+        ? Object.fromEntries(
+            Object.entries(product.channelPerformance ?? {})
+              .map(([channelId, months]) => [channelId, pickMonthKey(months, month)] as const)
+              .filter((entry): entry is [string, Record<string, { retailAmount?: number; retailQty?: number }>] =>
+                entry[1] !== undefined,
+              ),
+          )
+        : product.channelPerformance;
+
+      const hasAny = (record: Record<string, unknown> | undefined): boolean =>
+        record !== undefined && Object.keys(record).length > 0;
+      if (
+        month !== undefined &&
+        portraits.length === 0 &&
+        !hasAny(performance) &&
+        !hasAny(funnel) &&
+        !hasAny(channelPerformance)
+      ) {
+        const portraitMonths = availableMonths(index, 'product', spu);
+        const dataMonths = [
+          ...new Set([
+            ...Object.keys(product.performance ?? {}),
+            ...Object.keys(product.funnel ?? {}),
+            ...Object.values(product.channelPerformance ?? {}).flatMap((months) =>
+              Object.keys(months),
+            ),
+          ]),
+        ]
+          .filter((key) => key !== 'unknown')
+          .sort();
+        return err(
+          'month-mismatch',
+          `商品 ${spu} 在 ${month} 没有画像、经营指标、漏斗或渠道成交`,
+          `可用月份：${[...new Set([...portraitMonths, ...dataMonths])].sort().join('、')}`,
+        );
+      }
+
+      const { performance: _p, funnel: _f, channelPerformance: _c, ...rest } = product;
       return ok({
-        ...product,
-        portrait: portrait
-          ? { month: portrait.month, projections: portrait.projections }
-          : undefined,
+        ...rest,
+        ...(performance !== undefined ? { performance } : {}),
+        ...(funnel !== undefined ? { funnel } : {}),
+        ...(channelPerformance !== undefined ? { channelPerformance } : {}),
+        portraits,
       });
     },
   );
@@ -338,31 +465,23 @@ export function createServer(index: DataIndex): McpServer {
         spu: z.string().describe('款号'),
         dimensions: z.array(z.string()).optional().describe('统一维度名列表'),
         month: z.string().optional(),
+        platform: z.string().optional().describe('平台消歧：抖音／天猫／京东（同月多平台时必传）'),
       }),
     },
     (args) => {
       const spu = String(args.spu ?? '');
-      const month = typeof args.month === 'string' ? args.month : undefined;
-      const portrait = findPortrait(index, {
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const platform =
+        typeof args.platform === 'string' && args.platform !== '' ? args.platform : undefined;
+      const selection = selectPortraitOrError({
+        label: `商品 ${spu}`,
         entityType: 'product',
-        entityId: spu,
-        ...(month ? { month } : {}),
+        entityIds: [spu],
+        month,
+        platform,
       });
-      if (!portrait) {
-        const months = availableMonths(index, 'product', spu);
-        if (months.length === 0) {
-          return err(
-            'not-found',
-            `商品 ${spu} 在索引中没有人群画像`,
-            '商品存在但无画像数据',
-          );
-        }
-        return err(
-          month ? 'month-mismatch' : 'ambiguous',
-          month ? `商品 ${spu} 在 ${month} 无画像` : `商品 ${spu} 有多份画像，必须指定 month`,
-          `可用月份：${months.join('、')}`,
-        );
-      }
+      if ('error' in selection) return selection.error;
+      const portrait = selection.portrait;
       const dimensions = Array.isArray(args.dimensions) ? (args.dimensions as string[]) : undefined;
       const projections = dimensions
         ? Object.fromEntries(
@@ -372,6 +491,7 @@ export function createServer(index: DataIndex): McpServer {
       return ok({
         spu,
         month: portrait.month,
+        platform: portraitPlatform(portrait),
         sampleSize: portrait.sampleSize,
         coverage: portrait.coverage,
         projections,
@@ -389,11 +509,13 @@ export function createServer(index: DataIndex): McpServer {
       inputSchema: z.object({
         level: z.string().describe('category / series / hot / ip'),
         key: z.string().describe('层级下的具体键，如品类名'),
+        month: z.string().optional().describe('月份 YYYY-MM；只聚合各成员覆盖该月的画像'),
       }),
     },
     (args) => {
       const level = String(args.level ?? '');
       const key = String(args.key ?? '');
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
       if (!['category', 'series', 'hot', 'ip'].includes(level)) {
         return err(
           'invalid-argument',
@@ -407,7 +529,20 @@ export function createServer(index: DataIndex): McpServer {
           '当前仅支持 category 层级，可由商品档案的品类字段推导',
         );
       }
-      const portrait = aggregatePortrait(index, { level, key });
+      // 不带 month：先逐成员解析，成员有多份画像时显式歧义（SA-03）
+      if (month === undefined) {
+        const members = selectAggregateMembers(index, { level, key });
+        const ambiguousMember = members.find((member) => member.selection.status === 'ambiguous');
+        if (ambiguousMember && ambiguousMember.selection.status === 'ambiguous') {
+          const selection = ambiguousMember.selection;
+          return err(
+            'ambiguous',
+            `成员 ${ambiguousMember.spu} 有多份画像（月份：${selection.months.join('、')}）`,
+            `传 month 参数（可用月份：${selection.months.join('、')}）`,
+          );
+        }
+      }
+      const portrait = aggregatePortrait(index, { level, key, ...(month ? { month } : {}) });
       if (!portrait) {
         // 品类层级的文案与既有实现保持一致（现状不变性）
         return err(
@@ -464,13 +599,47 @@ export function createServer(index: DataIndex): McpServer {
         spu: z.string().describe('款号'),
         channelId: z.string().describe('店铺编码'),
         month: z.string().optional(),
+        productPlatform: z.string().optional().describe('商品侧平台消歧：抖音／天猫／京东'),
+        channelPlatform: z.string().optional().describe('渠道侧平台消歧：抖音／天猫／京东'),
       }),
     },
     (args) => {
       const spu = String(args.spu ?? '');
       const channelId = String(args.channelId ?? '');
-      const month = typeof args.month === 'string' ? args.month : undefined;
-      const comparison = compareProductChannel(index, { spu, channelId, ...(month ? { month } : {}) });
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const productPlatform =
+        typeof args.productPlatform === 'string' && args.productPlatform !== ''
+          ? args.productPlatform
+          : undefined;
+      const channelPlatform =
+        typeof args.channelPlatform === 'string' && args.channelPlatform !== ''
+          ? args.channelPlatform
+          : undefined;
+      const productSelection = selectPortraitOrError({
+        label: `商品 ${spu}`,
+        entityType: 'product',
+        entityIds: [spu],
+        month,
+        platform: productPlatform,
+        platformParam: 'productPlatform',
+      });
+      if ('error' in productSelection) return productSelection.error;
+      const channelSelection = selectPortraitOrError({
+        label: `渠道 ${channelId}`,
+        entityType: 'channel',
+        entityIds: channelEntityIds(index, channelId),
+        month,
+        platform: channelPlatform,
+        platformParam: 'channelPlatform',
+      });
+      if ('error' in channelSelection) return channelSelection.error;
+      const comparison = compareProductChannel(index, {
+        spu,
+        channelId,
+        ...(month !== undefined ? { month } : {}),
+        ...(productPlatform !== undefined ? { productPlatform } : {}),
+        ...(channelPlatform !== undefined ? { channelPlatform } : {}),
+      });
       if (!comparison) {
         const productMonths = availableMonths(index, 'product', spu);
         const channelMonths = availableMonths(
@@ -503,16 +672,19 @@ export function createServer(index: DataIndex): McpServer {
         label: z.string().describe('标签值，如 银发族'),
         scope: z.string().optional().describe('product / channel / brand / all'),
         topN: z.number().int().optional(),
+        month: z.string().optional().describe('月份 YYYY-MM；只命中覆盖该月的画像，命中带匹配方式'),
       }),
     },
     (args) => {
       const dimension = String(args.dimension ?? '');
       const label = String(args.label ?? '');
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
       const hits = searchByTag(index, {
         dimension,
         label,
         ...(typeof args.scope === 'string' ? { scope: args.scope } : {}),
         ...(typeof args.topN === 'number' ? { topN: args.topN } : {}),
+        ...(month !== undefined ? { month } : {}),
       });
       if (hits.length === 0) {
         return err(
@@ -533,16 +705,32 @@ export function createServer(index: DataIndex): McpServer {
       inputSchema: z.object({
         spu: z.string().describe('款号'),
         topN: z.number().int().optional(),
+        month: z.string().optional().describe('月份 YYYY-MM；目标与候选都改用覆盖该月的画像'),
+        platform: z.string().optional().describe('目标画像的平台消歧'),
       }),
     },
     (args) => {
       const spu = String(args.spu ?? '');
+      const month = typeof args.month === 'string' && args.month !== '' ? args.month : undefined;
+      const platform =
+        typeof args.platform === 'string' && args.platform !== '' ? args.platform : undefined;
       if (!findProduct(index, spu)) {
         return err('not-found', `商品 ${spu} 不在索引中`);
       }
+      // 目标画像先单独解析，把「多份画像」的歧义显式返回，不退化成只比属性（SA-03）
+      const targetSelection = selectPortraitOrError({
+        label: `商品 ${spu}`,
+        entityType: 'product',
+        entityIds: [spu],
+        month,
+        platform,
+      });
+      if ('error' in targetSelection) return targetSelection.error;
       const hits = similarProducts(index, {
         spu,
         ...(typeof args.topN === 'number' ? { topN: args.topN } : {}),
+        ...(month !== undefined ? { month } : {}),
+        ...(platform !== undefined ? { platform } : {}),
       });
       return ok({ spu, total: hits.length, hits });
     },

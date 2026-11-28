@@ -6,7 +6,7 @@ import {
   aggregatePortrait,
   buildIndex,
   channelEntityIds,
-  findPortraitByEntityIds,
+  selectPortrait,
   listProducts,
   NormalizationError,
   type DataIndex,
@@ -248,23 +248,25 @@ describe('实体别名目录（DC04）', () => {
     assert.equal(aliases![0]!.channelId, 'D00003');
 
     // 画像实体名被归一为规范名
-    const portrait = findPortraitByEntityIds(index, {
+    const selection = selectPortrait(index, {
       entityType: 'channel',
       entityIds: channelEntityIds(index, 'D00003'),
     });
-    assert.ok(portrait, '别名归一后 D00003 应能关联到画像');
-    assert.equal(portrait!.entityId, '演示账号3');
+    assert.ok(selection.status === 'found', '别名归一后 D00003 应能关联到画像');
+    if (selection.status === 'found') {
+      assert.equal(selection.portrait.entityId, '演示账号3');
+    }
   });
 
   test('别名目录不存在时行为与现状一致：关联不上，且不改画像实体名', async () => {
     const root = await createP0DataRoot({ include: [] });
     const index = await buildIndex({ dataRoot: root });
     assert.equal(table(index, 'entityAliases'), undefined);
-    const portrait = findPortraitByEntityIds(index, {
+    const selection = selectPortrait(index, {
       entityType: 'channel',
       entityIds: channelEntityIds(index, 'D00003'),
     });
-    assert.equal(portrait, undefined, '无别名目录时不应凭空关联上');
+    assert.equal(selection.status, 'not-found', '无别名目录时不应凭空关联上');
     const raw = index.portraits.find((item) => item.entityId === '演示账号3旗舰店');
     assert.ok(raw, '画像实体名保持原样');
   });

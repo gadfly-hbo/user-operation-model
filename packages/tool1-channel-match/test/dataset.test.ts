@@ -206,3 +206,127 @@ describe('data/ 正式路径 · 适配', () => {
     assert.equal(results[0]?.flags.priceMissing, true);
   });
 });
+
+describe('data/ 正式路径 · 期间语义（切片 A）', () => {
+  /** 多月份／多平台／年份画像 + 按月经营指标的合成数据根。 */
+  async function buildPeriodDataRoot(): Promise<string> {
+    const root = mkdtempSync(join(tmpdir(), 'uom-tool1-period-'));
+    const domains = join(root, 'domains');
+    const douyinDir = join(domains, '07_人群画像', '抖音');
+    const tmallDir = join(domains, '07_人群画像', '天猫');
+    mkdirSync(join(domains, '02_渠道信息'), { recursive: true });
+    mkdirSync(join(domains, '04_商品信息'), { recursive: true });
+    mkdirSync(douyinDir, { recursive: true });
+    mkdirSync(tmallDir, { recursive: true });
+
+    const channelBook = new ExcelJS.Workbook();
+    const channelSheet = channelBook.addWorksheet('Sheet1');
+    channelSheet.addRow(['店铺编码', '店铺', '渠道类型', '平台']);
+    channelSheet.addRow(['D00001', '演示账号A', '抖音直播', '抖音']);
+    channelSheet.addRow(['D00002', '演示账号B', '抖音直播', '抖音']);
+    channelSheet.addRow(['D00003', '演示账号C', '抖音直播', '抖音']);
+    await channelBook.xlsx.writeFile(join(domains, '02_渠道信息', '渠道店铺宽表.xlsx'));
+
+    const productBook = new ExcelJS.Workbook();
+    const productSheet = productBook.addWorksheet('Sheet1');
+    productSheet.addRow(['款号', '吊牌价', '中类', '小类']);
+    productSheet.addRow(['SPU-9001', '299', '短袖T恤', 'T恤']);
+    productSheet.addRow(['SPU-9002', '399', '短袖T恤', 'T恤']);
+    await productBook.xlsx.writeFile(join(domains, '04_商品信息', '商品宽表.xlsx'));
+
+    // 渠道画像：演示账号A 两个月（2026-09／2026-10）+ 2026-10 天猫（同月多平台）
+    douyinPortrait(join(douyinDir, '2026-09_演示账号A_抖音.csv'), '演示账号A', '2026-09');
+    douyinPortrait(join(douyinDir, '2026-10_演示账号A_抖音.csv'), '演示账号A', '2026-10');
+    const tmallBook = new ExcelJS.Workbook();
+    const tmallSheet = tmallBook.addWorksheet('明细');
+    tmallSheet.addRow(['标签类型', '一级标签(标签值)', '占比']);
+    tmallSheet.addRow(['预测性别', '女', '50%']);
+    tmallSheet.addRow(['预测性别', '男', '50%']);
+    tmallSheet.addRow(['八大消费群体', '新锐白领', '30%']);
+    tmallSheet.addRow(['八大消费群体', '都市蓝领', '20%']);
+    tmallSheet.addRow(['八大消费群体', '精致妈妈', '20%']);
+    tmallSheet.addRow(['八大消费群体', 'Z世代', '18%']);
+    tmallSheet.addRow(['八大消费群体', '小镇青年', '12%']);
+    tmallSheet.addRow(['预测年龄段', '18-23', '35%']);
+    tmallSheet.addRow(['预测年龄段', '24-30', '40%']);
+    tmallSheet.addRow(['预测年龄段', '31-40', '15%']);
+    tmallSheet.addRow(['预测年龄段', '41-50', '7%']);
+    tmallSheet.addRow(['预测年龄段', '50+', '3%']);
+    tmallSheet.addRow(['预测消费能力', '高消费', '30%']);
+    tmallSheet.addRow(['预测消费能力', '中消费', '45%']);
+    tmallSheet.addRow(['预测消费能力', '低消费', '25%']);
+    tmallSheet.addRow(['城市等级', '一线', '30%']);
+    tmallSheet.addRow(['城市等级', '新一线', '30%']);
+    tmallSheet.addRow(['城市等级', '二线', '25%']);
+    tmallSheet.addRow(['城市等级', '三线', '15%']);
+    tmallSheet.addRow(['预测人生阶段', '单身期', '60%']);
+    tmallSheet.addRow(['预测人生阶段', '已婚未育期', '20%']);
+    tmallSheet.addRow(['预测人生阶段', '养育期', '20%']);
+    await tmallBook.xlsx.writeFile(join(tmallDir, '2026-10_演示账号A画像数据_天猫.xlsx'));
+
+    // 演示账号B：区间画像；演示账号C：年份画像（R-7 全年区间）
+    douyinPortrait(join(douyinDir, '2507-2606_演示账号B_抖音.csv'), '演示账号B', '2507-2606');
+    writeCsv(join(douyinDir, '2024_演示账号C_抖音.csv'), [
+      ['标签类型', '标签', '2024_演示账号C-占比', '2024_演示账号C-tgi'],
+      ...SIX_DIMENSION_ROWS,
+    ]);
+
+    // 单品画像：SPU-9001 无月份；SPU-9002 两个月
+    douyinPortrait(join(douyinDir, '款号SPU-9001_抖音.csv'), 'SPU-9001');
+    douyinPortrait(join(douyinDir, '款号SPU-9002_2609_抖音.csv'), 'SPU-9002', '2026-09');
+    douyinPortrait(join(douyinDir, '款号SPU-9002_2610_抖音.csv'), 'SPU-9002', '2026-10');
+
+    mkdirSync(join(root, 'tables'), { recursive: true });
+    writeCsv(join(root, 'tables', 'product-performance.csv'), [
+      ['款号', '月份', '零售额', '零售量', '售罄率', '退货率', '退款率', '毛利率', 'UV', '转化率'],
+      ['SPU-9001', '2026-09', '6000', '30', '80%', '5%', '3%', '45%', '5000', '2.5%'],
+      ['SPU-9001', '2026-10', '12000', '40', '85%', '4%', '2%', '46%', '6000', '3.0%'],
+      ['SPU-9002', '2026-10', '9000', '30', '70%', '', '', '', '', ''],
+    ]);
+    writeCsv(join(root, 'tables', 'product-channel.csv'), [
+      ['款号', '店铺编码', '月份', '零售额', '零售量'],
+      ['SPU-9001', 'D00001', '2026-09', '6000', '30'],
+      ['SPU-9001', 'D00001', '2026-10', '12000', '40'],
+    ]);
+    return root;
+  }
+
+  test('indexMonths 保留区间与年份字面标签（SA-09），selectedMonth 取最新具体月', async () => {
+    const root = await buildPeriodDataRoot();
+    const dataset = await buildDataRootDataset({ dataRoot: root });
+    assert.ok(
+      dataset.months.includes('2025-07~2026-06'),
+      `区间标签应按字面保留：${dataset.months.join('、')}`,
+    );
+    assert.ok(dataset.months.includes('2024-01~2024-12'), '年份标签应按字面保留');
+    assert.equal(dataset.selectedMonth, '2026-10');
+  });
+
+  test('单价走 resolveUnitPrice：该月经营指标优先（SA-08）', async () => {
+    const root = await buildPeriodDataRoot();
+    const dataset = await buildDataRootDataset({ dataRoot: root, month: '2026-10' });
+    const product = dataset.products.find((item) => item.spu === 'SPU-9001');
+    assert.equal(product?.price, 300, '12000 / 40 = 300');
+    assert.equal(product?.priceSource, 'retail-amount-qty');
+    assert.equal(product?.retailAmount, 12000);
+  });
+
+  test('多平台画像按显式优先级取用并在 notes 写明数量（SA-03）', async () => {
+    const root = await buildPeriodDataRoot();
+    const dataset = await buildDataRootDataset({ dataRoot: root, month: '2026-10' });
+    const channel = dataset.channels.find((item) => item.id === 'D00001');
+    assert.equal(channel?.portraitPlatform, 'douyin', '优先级抖音＞天猫');
+    assert.ok(
+      dataset.notes.some((note) => note.includes('多平台') && note.includes('1')),
+      `notes 应写明多平台取用数量：${dataset.notes.join(' / ')}`,
+    );
+  });
+
+  test('年份画像匹配方式标 year（SA-02 分层）', async () => {
+    const root = await buildPeriodDataRoot();
+    const dataset = await buildDataRootDataset({ dataRoot: root, month: '2024-06' });
+    const channel = dataset.channels.find((item) => item.id === 'D00003');
+    assert.ok(channel, '年份画像覆盖 2024-06');
+    assert.equal(channel?.portraitMatch, 'year');
+  });
+});

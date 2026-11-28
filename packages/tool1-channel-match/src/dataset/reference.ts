@@ -1,7 +1,14 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalizeDouyinPortrait, parseCsvRows } from '@uom/core';
-import { pickPortrait, toMatchPortraitInput } from './portrait.js';
+import {
+  normalizeDouyinPortrait,
+  parseCsvRows,
+  resolveRetailAmount,
+  resolveUnitPrice,
+  selectPortrait,
+  toMatchPortraitInput,
+  type ProductDossier,
+} from '@uom/core';
 import type { MatchDataset } from './types.js';
 
 /**
@@ -159,13 +166,18 @@ export function buildReferenceDataset(options: ReferenceDatasetOptions): MatchDa
       entityId: key,
       month: selectedMonth,
     });
+    // 画像与所选月的匹配方式统一走 core 的 selectPortrait（切片 A · SA-03）
+    const selection = selectPortrait(
+      { portraits: [portrait] },
+      { entityType: 'channel', entityIds: [key], month: selectedMonth },
+    );
     channels.push({
       id: key,
       name: chosen.entityDir,
       type: chosen.typeLabel,
       portrait: toMatchPortraitInput(portrait),
       portraitPlatform: 'douyin',
-      portraitMatch: 'exact' as const,
+      portraitMatch: selection.status === 'found' ? selection.match : ('exact' as const),
     });
   }
   if (missingChannels.length > 0) {
@@ -189,26 +201,43 @@ export function buildReferenceDataset(options: ReferenceDatasetOptions): MatchDa
         month: '',
       });
       const row = metrics.get(spu);
-      let price: number | undefined;
-      let priceSource: 'retail-amount-qty' | 'unit-price' | 'missing' = 'missing';
-      if (row?.retailAmount !== undefined && row.retailAmount > 0 && row.retailQty !== undefined && row.retailQty > 0) {
-        price = Math.round((row.retailAmount / row.retailQty) * 100) / 100;
-        priceSource = 'retail-amount-qty';
-      } else if (row?.unitPrice !== undefined && row.unitPrice > 0) {
-        price = Math.round(row.unitPrice * 100) / 100;
-        priceSource = 'unit-price';
-      } else {
-        withoutPrice += 1;
-      }
+      // 单价与零售额统一走 core 的单一来源（切片 A · SA-08）：
+      // 参考数据的零售额／零售量放在所选月的指标层，件单价视为主数据 unitPrice
+      const stub = {
+        ...(row
+          ? {
+              performance: {
+                [selectedMonth]: {
+                  ...(row.retailAmount !== undefined ? { retailAmount: row.retailAmount } : {}),
+                  ...(row.retailQty !== undefined ? { retailQty: row.retailQty } : {}),
+                },
+              },
+            }
+          : {}),
+        price: {
+          ...(row?.unitPrice !== undefined ? { unitPrice: row.unitPrice } : {}),
+          ...(row?.retailAmount !== undefined ? { retailAmount: row.retailAmount } : {}),
+        },
+      } as ProductDossier;
+      const resolvedPrice = resolveUnitPrice(stub, selectedMonth);
+      const price = resolvedPrice.source === 'missing' ? undefined : resolvedPrice.price;
+      const priceSource = resolvedPrice.source;
+      if (resolvedPrice.source === 'missing') withoutPrice += 1;
+      const retailAmount = resolveRetailAmount(stub, selectedMonth);
+      // 单品画像无月份：selectPortrait 按 unknown 层取用，不回退
+      const selection = selectPortrait(
+        { portraits: [portrait] },
+        { entityType: 'product', entityIds: [spu], month: selectedMonth },
+      );
       products.push({
         spu,
         name: row?.name ?? spu,
         ...(price === undefined ? {} : { price }),
         priceSource,
-        ...(row?.retailAmount === undefined ? {} : { retailAmount: row.retailAmount }),
+        ...(retailAmount === undefined ? {} : { retailAmount }),
         portrait: toMatchPortraitInput(portrait),
         portraitPlatform: 'douyin',
-        portraitMatch: 'unknown' as const,
+        portraitMatch: selection.status === 'found' ? selection.match : ('unknown' as const),
       });
     }
   }
