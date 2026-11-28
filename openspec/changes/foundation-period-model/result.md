@@ -1,6 +1,6 @@
 # 切片 A · 时间与选择语义 — 结果记录
 
-> 状态：实现收口；独立复核完成（`PASS` 附带条件，`.local/review-slice-a/review.md`）；复核应修 1–7 已处理，见文末「验收修正（独立复核后）」。**本文不构成整体交付完成的宣称**；最终验收由主 agent 与用户作出。
+> 状态：实现收口；独立复核完成（`PASS` 附带条件，`.local/review-slice-a/review.md`），复核应修 1–7 已处理，见文末「验收修正（独立复核后）」；第二轮独立复核完成（`PASS` 附带条件，`.local/review-slice-a/round2/review-round2.md`），其应修 N1／N2／N3 已处理，见文末「第二轮复核后修正（run5）」。**本文不构成整体交付完成的宣称**；最终验收由主 agent 与用户作出。
 
 ## 执行信息
 
@@ -33,7 +33,7 @@
 | SA-09 | **PASS** | 同上；索引层 `index.months` 字面不变量改由 `tool1/test/dataset.test.ts`「索引层 index.months 仍保留字面标签并集」锁定（覆盖保留说明见下）；core `availableMonths` 语义未改 |
 | SA-10 | **PASS** | 见下节「回归核对」 |
 | SA-11 | **PASS** | 见下节「门禁复跑」 |
-| SA-12 | **PASS**（判据按 spec v0.2，演示部分）／真实数据快照部分 **NOT_PROVED** | 演示报告比对：`green/run3-*` 与 `.local/slice-a/equiv/demo-diff-report.json`（48 单元：28 不变、20 变化且全部只有 `strategy_segment`、0 个无法解释，exit 0）；真实数据前后快照引用 `.local/slice-a/equiv/snapshot-before.json`、`snapshot-after.json`、`capture-before.log`、`capture-after.log`。**主 agent 结论（结构化 diff，引用 `.local/slice-a/accept/real-unit-structured-diff.json`）**：真实数据中唯一进入矩阵的匹配对（改动前 `--month 2024-01` ↔ 改动后 `--month 2024-12`）总分、评级、熔断、各维度分、JS、余弦、Top3 重合度、可用与缺失维度、价格承接全部一致；差异仅 `flags.channelApproximate`（false→true，年份区间现被识别为近似，符合 R-7）与证据里 Top3 展示占比的浮点尾差（`productTop3`／`channelTop3` 两个键，复核 §7 应修-7 的解释缺口就此闭合）。**真实数据无经营指标／漏斗／成交表**（334 款 `hasPerformance/hasFunnel/hasChannelPerformance` 全 false），SA-04／05／08／09 的真实数据面未覆盖，记 `NOT_PROVED` |
+| SA-12 | **PASS**（判据按 spec v0.2，演示部分）／真实数据快照部分 **NOT_PROVED** | 演示报告比对：`green/run3-*` 与 `.local/slice-a/equiv/demo-diff-report.json`（48 单元：28 不变、20 变化且全部只有 `strategy_segment`、0 个无法解释，exit 0）；真实数据前后快照引用 `.local/slice-a/equiv/snapshot-before.json`、`snapshot-after.json`、`capture-before.log`、`capture-after.log`。**主 agent 结论（结构化 diff，引用 `.local/slice-a/accept/real-unit-structured-diff.json`）**：真实数据中唯一进入矩阵的匹配对（改动前 `--month 2024-01` ↔ 改动后 `--month 2024-12`）总分、评级、熔断、各维度分、JS、余弦、Top3 重合度、可用与缺失维度、价格承接全部一致；差异仅 `flags.channelApproximate`（false→true，年份区间现被识别为近似，符合 R-7）与证据里 Top3 展示占比的浮点尾差（`productTop3`／`channelTop3` 两个键，复核 §7 应修-7 的解释缺口就此闭合）。**真实数据无经营指标／漏斗／成交表**（334 款 `hasPerformance/hasFunnel/hasChannelPerformance` 全 false；该计数来自主 agent 的验收抓取日志 `.local/slice-a/accept/capture-*.log`，第二轮复核者未读真实数据，记 `UNKNOWN`——S5），SA-04／05／08／09 的真实数据面未覆盖，记 `NOT_PROVED` |
 
 ## 回归核对（SA-10）
 
@@ -102,6 +102,7 @@
 5. `get_retention_cohort` 的 `cohortMonth` 未纳入本批 month 校验：参数名非 `month`、语义为首购月份且不在任务列出的工具范围内；如需统一另立小修。
 6. **`packages/core/src/portrait/types.ts` 越出原允许路径**（复核应修-6a）：SA-01 把期间写进画像必需类型上的可选 `period` 字段，原清单遗漏且当时未记偏差；spec v0.3 已追认。
 7. **`month` 校验扩展到 5 个规格未列的工具**（复核应修-6b）：`get_brand_portrait`、`get_competitor_portrait`、`get_recency_distribution`、`get_channel_flow_matrix`、`get_diagnosis` 一并先校验再查数据，主 agent 在 spec v0.3 追认；`get_retention_cohort.cohortMonth` 仍未纳入（见偏差 5）。其中 `get_competitor_portrait` 的 month 过滤已按 v0.3 改为覆盖规则；`get_brand_portrait` 的 `month` 参数本身未参与过滤（既有问题，见范围外发现）。
+8. **已知差异（第二轮复核 S4）**：`monthWithinScope` 在 run4（建议 6）由 `parseMonthRange`（240 个月上限）换成 `periodMonths`（无上限）——对规范化标签两者等价，仅对超过 240 个月的异常区间行为不同（前者会因超限拒绝，后者照常展开）。可忽略，记一笔备查。
 
 ## 范围外发现（只记录不修，归切片 B）
 
@@ -120,11 +121,13 @@
 
 ## 验收修正（独立复核后，run4）
 
-复核报告（`.local/review-slice-a/review.md` §7）应修 1–7 与本次处理的对应关系。逐条均先真实 RED（目标断言失败）再最小 GREEN；日志在 `.local/slice-a/red|green/run4-*.log`。
+复核报告（`.local/review-slice-a/review.md` §7）应修 1–7 与本次处理的对应关系。除 run4-fix2 组（见下方如实披露）外，逐条先真实 RED（目标断言失败）再最小 GREEN；日志在 `.local/slice-a/red|green/run4-*.log`。
+
+**如实披露（第二轮复核 N3，采纳复核者原话）**：`run4-fix2-hints.log` 的 RED 为事后取证——修正夹具后以 `git stash` 暂时回退实现重取（20 例中 9 例目标断言失败），证明测试对修前实现的判别力，**不证明先红后绿的时序**；该组修正的 TDD 时序记 `NOT_PROVED`，判别力另由复核变异独立背书。
 
 | 复核条目 | 处理 | 证据（RED → GREEN） |
 | --- | --- | --- |
-| 应修-1 平台歧义 hint 指错方向（`selectPortraitOrError` 与 `get_portrait_aggregate` 同模式） | hint 按 `selection.reason` 分支：reason=`platform` 或同月多平台提示传 platform（compare 两侧为 `productPlatform`／`channelPlatform`）；跨月歧义才提示 month。复核者的复现形态（抖音 `2026-07~2026-09` + 天猫 `2026-08~2026-10` 查 `2026-09`）有专测锁定 | `red/run4-fix2-hints.log`（复核应修-1 组）→ `green/run4-fix2-hints.log`（10/10） |
+| 应修-1 平台歧义 hint 指错方向（`selectPortraitOrError` 与 `get_portrait_aggregate` 同模式） | hint 按 `selection.reason` 分支：reason=`platform` 或同月多平台提示传 platform（compare 两侧为 `productPlatform`／`channelPlatform`）；跨月歧义才提示 month。复核者的复现形态（抖音 `2026-07~2026-09` + 天猫 `2026-08~2026-10` 查 `2026-09`）有专测锁定 | `red/run4-fix2-hints.log`（20 例中 9 例目标断言失败，取证方式见上方披露）→ `green/run4-fix2-hints.log`（208/208） |
 | 应修-2 hint「可用月份」是入参校验拒绝的值 | core 新增纯函数 `describeAvailablePeriods(labels)`（`period/parse.ts`）：单月标签直接列为可用月份；区间／年份标签写「month 须为落在 `<标签>` 内的自然月（YYYY-MM）」；`selectPortraitOrError` 全部 hint、`get_portrait_aggregate`、dossier `month-mismatch`、compare not-found 统一走它 | 同上（复核应修-2 组；单月标签直列与年份标签说明各有专测） |
 | 应修-3 `platform: ''` 绕过平台歧义 | `select.ts` 统一为「非空字符串才算指定」，空串等同未指定 → 照常 `ambiguous` | `red/run4-fix1-core-period.log`（7 失败含本条 2 例）→ `green/run4-fix1-core-period.log`（116/116） |
 | 应修-4 带首尾空白的 `month` 过校验却永不命中 | 校验通过后以 `parsePeriod(m).month` 规范月标签为查找值（trim），`"2026-10 "` 等价 `"2026-10"`；非法写法仍 `invalid-month` 且零查找 | 同上（3 例） |
@@ -149,3 +152,23 @@
 **永久性 `NOT_PROVED`（无法补救，如实保留）**：SA-08 `resolveUnitPrice`／`resolveRetailAmount`、SA-04 三例（漏斗按月、渠道成交空月入 unknown、不再产生取最新月份记录）、工具1 侧 SA-03／08／09 集成的「先 RED 后 GREEN」——行为层面 PASS（复核逐条核实），TDD 证据层面不可证明，测试判别力由复核变异（M05–M07、M13、M15）独立背书。
 
 **修正轮门禁**：见下表 run4 各行；修正过程中工具1 演示报告重新生成后与入库版逐字节一致（`green/run4-final.log` 附比对输出），黄金 G1–G5 逐字不变。
+
+## 第二轮复核后修正（run5）
+
+第二轮复核（`.local/review-slice-a/round2/review-round2.md`，PASS 附带条件）应修 N1／N2／N3 的处理。本轮逐条先真实 RED（目标断言失败，零环境／fixture 错误）再最小 GREEN；日志在 `.local/slice-a/red|green/run5-*.log`。
+
+| 复核条目 | 处理 | 证据（RED → GREEN） |
+| --- | --- | --- |
+| N1 `month` 边界层严格校验（采用复核报告方案 (b)） | `isNaturalMonth` 改为严格正则 `^\d{4}-(0[1-9]|1[0-2])$`（不 trim、不接受 YYMM、不接受区间／年份标签），`selectPortrait`（删除「带空白按规范月查找」，v0.3 该取法作废）与 `periodCovers` 同源使用；MCP `readMonth`／`readRequiredMonth` 与工具1 `validateMonthOption` 走同一判断，代码零改动即收紧（单一来源）。探针形态全覆盖：D2／D3／D4（dossier 带空白／YYMM → `invalid-argument`，修前是 ok 且指标静默落空）、渠道入口 `2610`（修前被当 `2026-10` 命中）、T1/T3（工具1 两条数据路径与 CLI 非法月非零退出、零产物） | `red/run5-n1-core.log`（56 例中 5 失败）→ `green/run5-n1-core.log`（56/56）；`red/run5-n1n2-mcp-hints.log` → `green/run5-n1n2-mcp-hints.log`（19/19）；`red/run5-n1-tool1.log`（18 例中 2 失败）→ `green/run5-n1-tool1.log`（18/18）；CLI 探针 `red/run5-n1-cli.log`（`2610`／`2026-10 ` 修前 exit 0 且产生产物）→ `green/run5-n1-cli.log`（exit 1、零产物，`2026-10` 对照 exit 0） |
+| N2 无月份画像形态的歧义提示 | `selectPortrait` 歧义结果新增 `hasMonthless`；MCP 提示按形态判定：平台提示只在「可选平台多于一个」且（reason=`platform`／候选全无月份／候选全部共享同一非空月份标签）时给出；单平台多月（C4/C4b，修前提示传 platform 是死循环）与无月份+有月份混合（C5，修前 message 误写「在某月有多平台画像」）提示传 month；C3/C3b（两份无月份不同平台）提示传 platform；`get_portrait_aggregate` 在 `months=[]` 时提示「传任意月份（YYYY-MM）即可聚合」（S2，修前「没有可作为 month 的画像期间」误导） | 同 `run5-n1n2-mcp-hints.log`（C3/C3b/C4/C4b/C5/S2 六例 RED→GREEN） |
+| N3 result.md 如实披露与计数更正 | 「验收修正」节按复核者原话披露 `run4-fix2` RED 的 `git stash` 事后取证；`green/run4-fix2-hints.log` 计数 10/10 → 208/208（RED 为 20 例中 9 例）；SA-12 行注明 334 款计数的证据来源 `accept/capture-*.log`（S5）；偏差 8 补记 `monthWithinScope` 上限差异（S4）；「永久性 NOT_PROVED」清单加入 run4-fix2 组（见下） | 本节与上文（记录修正，无代码） |
+
+**改动的既有测试及覆盖保留（本轮）**：
+
+- `core/test/period.test.ts`「periodCovers 对非自然月入参一律 false」：`periodCovers(p,'2610')` 由断言 `true` 改为 `false`——**契约收紧的覆盖转移**：`2610` 是画像标签写法（`parsePeriod` 不变，仍解为 `2026-10`），但不是 `month` 入参写法；不变量（非自然月入参不得按写法猜测比较）保留并更严格（新增带空白入参断言）。
+- `core/test/portrait-select.test.ts`「带首尾空白的 month 等价于规范写法」两例：由断言 `found` 改为 `invalid-month`——同一覆盖转移（v0.4 作废 v0.3 该取法）；`'2026-13 '` 带空白拒绝用例不变，新增 `'2610' → invalid-month`。
+- 夹具新增（`period-hints.test.ts`）：演示账号7／8／9 与 SPU-004／005（无月份、混合、跨平台形态），既有断言未削弱。
+
+**永久性 `NOT_PROVED`（无法补救，如实保留，累计）**：第一轮已记的 SA-08 `resolveUnitPrice`／`resolveRetailAmount`、SA-04 三例、工具1 侧 SA-03／08／09 集成；第二轮新增 **run4-fix2 组**（hint 按 reason 分支、竞品覆盖规则、无月份画像纳入）的先红后绿时序——判别力由复核变异 R2-M01／M04／M06／M09／M12 独立背书。本轮 run5 三组修正的 RED→GREEN 时序完整。
+
+**本轮门禁**：`npm run check` 647/647（exit 0）；黄金、fidelity、archive-content、docs-links、data-guard、守卫自检与演示报告字节比对见 `green/run5-*.log`。
