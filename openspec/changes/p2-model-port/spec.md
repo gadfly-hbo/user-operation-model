@@ -65,7 +65,7 @@ P2 规格：移植 ModelEvol v0.4／v0.6 → 工具2（属性→六维画像预�
 ### 2.4 与硬约束 §9.2 的冲突（**D-P2-1 的来源**）
 
 - v0.4 的特征输入只有 3 个字段：`fitType`／`fabric`／**`fab`**。`fab` 是**营销卖点长文本**，属 §9.2 明令禁读的「人工 FAB 卖点」
-- v0.6 的 `Sample` 另带 `mindProduct`（心智产品）、`memoryPoint`（记忆点）、`groupTag`（群组打标）、`productAttribute`（货品属性），同属人工判断字段
+- v0.6 的 `Sample` 另带 `mindProduct`（心智产品）、`memoryPoint`（记忆点）、`groupTag`（群组打标），同属人工判断字段。`productAttribute`（货品属性）**不在此列**——2026-11-28 用户裁定（独立复核 S1）：追认为客观属性，其实际取值为三种生命周期类标签，性质同白名单「上新类型」，不含人工判断，允许进入合规特征集；须有测试锁住取值集合，出现其它值即失败，并在 result 披露
 - §9.2 白名单：品类、版型、面料、工艺、价格带、季节、上新类型、IP
 - **结论**：生产模型必须剔除 `fab` 等人工字段；而 v0.4 的 0.6957 基线是**含 fab** 跑出来的 → 合规特征集下该数字不可复现，验收线必须重定义（见 D-P2-1）
 
@@ -161,7 +161,7 @@ packages/core/test/**  packages/tool2-portrait-predict/test/**
 models/**                            # gitignore：登记副本（manifest 校验记录入 docs）
 tsconfig.json                        # 登记新包 references
 scripts/**                           # 校验与管线入口：fidelity-v04 / v06-pipeline / verify-modelevol-provenance（2026-11-28 用户追认）
-package.json  .gitignore             # 根脚本登记（test:fidelity-v04 / pipeline:v06）与 models/ 忽略（2026-11-28 追认）
+package.json  package-lock.json  .gitignore   # 根脚本登记（test:fidelity-v04 / pipeline:v06）、新增工作区包的锁文件必然变化（S10 追认）与 models/ 忽略（2026-11-28 追认）
 docs/match-model-baseline.md         # 冻结基线与门槛结论记录（2026-11-28 追认）
 openspec/changes/p2-model-port/**
 ```
