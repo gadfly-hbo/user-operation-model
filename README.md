@@ -11,7 +11,7 @@
 | [架构梳理与重构方案](docs/architecture-review-v1.md) | 已入库；底座重构按六个切片推进，切片 A（时间与选择语义）已合并 |
 | 数据 MCP | 已交付：17 个工具（stdio）；哪些工具的数据未就位见 [docs/mcp-usage.md](docs/mcp-usage.md) |
 | 工具1（货渠匹配） | 已交付（P1）：共享匹配内核 + 静态看板 + 错配清单；权重未经真实数据校准 |
-| 工具2（画像预测） | 已交付：ModelEvol v0.4／v0.6 移植与 Staging 登记；科学门槛未过，标「实验基线」不进生产，见 [docs/match-model-baseline.md](docs/match-model-baseline.md) |
+| 工具2（画像预测） | 已交付：ModelEvol v0.4／v0.6 移植与 Staging 登记；科学门槛未过、不进生产（见 [docs/match-model-baseline.md](docs/match-model-baseline.md)）；按[讨论稿 D8](docs/产品讨论稿-v0.2.md) 应在工作台标「实验基线」，该呈现待后续切片落地 |
 | 留存与回购报表 | 未开始 |
 | 业务侧数据模板包 | 已交付：`templates/数据模板.xlsx`，由代码契约生成 |
 | 工作台 UI 原型 | 已交付：`site/web`（静态站点，合成演示数据），设计说明见 [docs/ui-design.md](docs/ui-design.md) |
@@ -81,6 +81,7 @@ npm run check                                     # 构建 + 全量测试
 npm run test:golden                               # 匹配内核黄金校验用例
 python3 .github/scripts/check-docs-links.py .     # 文档相对链接
 python3 .github/scripts/check-data-guard.py .     # 数据不出网守卫（检查 git 索引）
+npm run check:archive-content                    # 归档真实内容不入库守卫
 ```
 
 ## 扩展性约定
