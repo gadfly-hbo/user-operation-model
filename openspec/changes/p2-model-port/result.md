@@ -9,6 +9,8 @@
 > `npm run pipeline:v06` 重跑再生（V9 系数区 sha256 逐位复现，见 §12.1）。
 > 历史 RED 不补造记录，其结论以本文件当时记录的命令与计数为凭（§3.3／§4.4／§10.5）；
 > 本轮（第四单）新写的测试有本轮真实 RED 留档（§12.2、`.local/p2/red-gate-conclusion.log`）。
+> **第五轮（2026-11-28，复核修单）**：按 [review-p2.md](review-p2.md)（独立复核，结论 FAIL）完成 B1–B4／S1–S5／建议项修单，
+> 全部新测试先取真 RED 留档于 `.local/p2/fix-review/`，处置与证据见 §14；模型包升版 v2 并登记（§8 第 25 条）。
 
 ## 1. 任务状态
 
@@ -20,10 +22,10 @@
 | P2-5 | §9.2 合规特征集 + 合规基线 | **PASS** | M06 / M07 | 见 §5 |
 | P2-6 | v0.6 六阶段移植 | **PASS**（管线）／门槛未达标（如实记录） | M08 | 见 §10 |
 | P2-7 | 导出器 + 黄金测试 | **PASS** | M09 | 见 §11 |
-| P2-8 | model-mlflow 登记（Staging） | **PASS**（Staging；门槛未过如实入账，不得晋级） | M10 | 见 §12 |
-| P2-9 | 文档与 result | 部分完成（本文件 + 溯源文档 + 基线文档；第四单已补 §12／§13 与门槛结论入档） | — | 其余随独立复核收尾 |
-| P2-10 | 全量检查 | 见 §7（前三轮 + 第四单一轮全量检查；断网自检 NOT_RUN，原因见 §7／§13.4） | M11 / M13 | 见 §7／§13.4 |
-| P2-11 | 独立复核 | **NOT_RUN** | — | 须由 `SDD·TDD 独立复核者` 执行，本轮作者不自评 |
+| P2-8 | model-mlflow 登记（Staging） | **PASS**（v1/v2 均 Staging；门槛未过如实入账，不得晋级） | M10 | 见 §12 |
+| P2-9 | 文档与 result | **PASS**（本轮交付物齐全：本文件 + 溯源文档 + 基线文档 + 门槛结论入档 + 复核修单章 §14；复核 S8 状态词已改用标准词汇） | — | 后续文档维护随修复轮进行 |
+| P2-10 | 全量检查 | 见 §7（前四轮 + **第五轮·复核修单** §7.3；断网自检 NOT_RUN，原因见 §7／§13.4） | M11 / M13 | 见 §7／§13.4 |
+| P2-11 | 独立复核 | **PASS**（2026-11-28 由未参与候选的 `SDD·TDD 独立复核者` 完成，结论 **FAIL**（阻断 B1–B4），报告 [review-p2.md](review-p2.md)；修单见 §14，由主 agent 另派实现子代理完成、待独立复核者重验受影响范围） | — | [review-p2.md](review-p2.md) |
 | P2-12 | PR / CI / squash 合并 | **NOT_RUN** | — | 本轮不 push、不开 PR |
 | P2-13 | 用户数据到位后生产重训 | **NOT_RUN** | M07 | 等 P0 数据 |
 
@@ -227,7 +229,7 @@ RED 方式：先建**只有导出签名、函数体抛 `not implemented`** 的�
 | --- | --- | --- |
 | 类型层 | `V04CompliantProductInput` 的字段集合里**不存在**禁读字段；测试文件里用 `Extract<ForbiddenField, keyof TInput> extends never ? true : never` 做**编译期断言** | 编译期即阻断越界 |
 | 投影层 | `projectCompliantInput` 是人工字段进入下游的**唯一**入口，按白名单逐字段挑选 | 运行时白名单 |
-| 行为层 | ① 输入里塞入不同 `fab` → 合规特征必须**完全一致**；② 抽取器源码**不得出现** `.fab` / `['fab']` 等访问（结构守卫，去注释与字符串字面量后检查） | 变异「把 fab 接回抽取器」→ 测试失败 |
+| 行为层 | ① **绕过投影层**直接喂抽取器：只差 `fab`（**有／无两种**）的原始输入特征必须完全一致（复核修单 B4 强化，杀「存在指示」型变异）；② 抽取器源码**不得以任何访问形态**出现人工字段——点号／`['fab']`／模板键／`in` 检查（方括号等形态在剥字符串字面量**之前**的源码上匹配，复核修单 B4）；③ 产出特征名必须可归属到白名单特征组（复核修单 B4） | 变异「把 fab 接回抽取器」→ 测试失败（三个存活变异重放全 KILLED，见 §14.2） |
 
 交叉特征只在白名单组内生成（分组前缀 `fit_` / `fabric_` / `cat_` / `season_` / `lifecycle_` / `ip_` / `craft_`）。
 
@@ -330,6 +332,27 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 | 归档只读性 | `git -C /Users/huangbo/Dev/Archive/ModelEvol status --short` | **PASS**（仅原有 `.DS_Store` 噪声，无源码/数据改动；本轮全程只读） |
 | model-mlflow 只读性 | `git -C <model-mlflow> status --short` | **PASS**（登记后其 git 工作树干净——账本 store `workspace/mlflow/` 与交付 `workspace/exports/` 均为该仓 gitignore 区，未触碰其代码本体/配置/既有条目） |
 
+### 7.3 第五轮·复核修单（2026-11-28，本轮追加）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 构建 | `npm run build` | **PASS**（退出码 0；`strict` + `noUncheckedIndexedAccess` 无报错） |
+| 单测（全量） | `npm test` | **PASS**（退出码 0；`tests 436 / pass 436 / fail 0`；较上轮 +24：复核修单 B2／B3／S1–S5／B4 守卫与建议项新测试） |
+| `npm run check` | `npm run check` | **PASS**（build + test 全绿） |
+| 忠实门（回归） | `UOM_ARCHIVE_FIXED_ROOT=<主仓>/data/archive-modelevol/v04-holdout npm run test:fidelity-v04` | **PASS**（退出码 0；两组数字容差 0 逐位复现：0.6957/0.9155/0.0825 与 0.7754/0.9300/0.0759，泄漏门禁 5/5 × 2 组；**冻结数字未改动**） |
+| v0.6 六阶段实跑 | `npm run pipeline:v06` | **PASS**（退出码 0；阶段 01–06 跑通，V1–V12 全 PASS；**V4 冻结 folds `2ca273cb2a2b14df…`、V9 系数区 `79669a0f30938c0b…` 与修单前逐位一致**；V10 首次带真实逐折断言、V12 首次真独立复算；模型包导出 **v2**） |
+| 溯源校验 | `node scripts/verify-modelevol-provenance.mjs` | **PASS**（退出码 0；5 包一致，含 187 条内嵌清单） |
+| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS**（118 条相对链接，错误 0，告警 0） |
+| 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | **PASS**（索引中无业务数据目录、数据文件或超大文件） |
+| **归档内容守卫（本轮新增）** | `npm run check:archive-content` | **PASS**（黑名单 85 条运行时取自固化区、不入库；扫描 tracked 文本 172 个，0 命中；同一守卫在修单前对旧夹具**命中 1 处**——RED 证据 `.local/p2/fix-review/red-b1-guard.log`） |
+| 依赖审计 | `npm audit --audit-level=high` | **PASS**（found 0 vulnerabilities；本轮未新增任何依赖） |
+| model-mlflow 登记 v2 | `node scripts/register-model-mlflow.mjs --package models/uom-tool2-portrait-v06/v2`（本地账本 127.0.0.1:5021，用后已停） | **PASS**（v2 · Staging · READY，run `abd1e4270fae4c4a83dd68cdfb200cfe`；v1 不动；S5 守卫实测拒绝非回环 `--url http://example.com:8080`） |
+| 断网自检 | `npm run offline-check` | **NOT_RUN**（工作树 `data/` 无真实业务数据，MCP server 启动失败——与前几轮同因，不为变绿拷数据） |
+| 工具1 黄金用例 | `npm run test:golden` | **NOT_RUN**（缺 `UOM_REFERENCE_ROOT`；本轮未触及 `packages/core/src/match/**` 评分逻辑） |
+| CI | — | **NOT_RUN**（本轮不 push、不开 PR） |
+| 归档只读性 | `find /Users/huangbo/Dev/Archive/ModelEvol -newermt 2026-11-26 -type f`（排除 .DS_Store/.qoder） | **PASS**（0 个文件，与复核命令 11 基线一致；本轮全程只读） |
+| model-mlflow 只读性 | `git -C <model-mlflow> status --short` | **PASS**（v2 登记后仍干净；账本与 exports 均在其 gitignore 区） |
+
 ## 8. 与 spec 的偏差 / 需要决定的事项
 
 1. **模型公共库范围略窄于 spec §1 交付物表述**：spec §1 写「单一 Ridge、单一指标、折内词表、特征抽取（词典外置为配置）」，本轮按发单只交付前 3 件；「特征抽取」与「词典外置为配置」留待 P2-4／P2-6。**需用户确认**：是否把「特征抽取」单列为 P2-3 的缺口。
@@ -373,7 +396,9 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 15. **★ 归档 folds 的分层键含人工字段**：冻结 `folds.json` 的 `stratify_key` 是 `categoryGroup x genderCorrected`，
     其中「性别修正」属人工字段。本移植**按 M08 要求把 folds 当作冻结输入消费**（只读 + 校验，不重生成），
     该字段**不进入预测路径**（特征抽取只读 §9.2 白名单）。但若将来要重做分层（例如改用纯客观字段分层），
-    全部 OOF 数字都会变，须另立变更。**需裁定**：是否接受「冻结分层含人工字段」这一事实。
+    全部 OOF 数字都会变，须另立变更。
+    **【已追认 2026-11-28，主 agent】**：folds 是归档冻结输入、只用于分组交叉验证，不进预测路径——
+    接受「冻结分层含人工字段」这一事实（非预测特征，不违反 §9.2；复核 §4.2 S9 闭合）。
 16. **★ v0.6 在 §9.2 合规特征集下未达归档验收门槛（FAIL，如实记录）**：门槛 1／2／4 为 FAIL（人生阶段 JS 提升 −0.0018、p=0.8358），
     门槛 3 PASS，门槛 5（fail-closed）PASS。管线机制本身全部达标（见 §10.3），**但模型质量未达标**。
     按 P2 规格 §7 第 4 条，v0.6 的验收结论本就**不继承**，故这不是「回归」，而是本移植自测的真实结论。
@@ -498,11 +523,11 @@ M08 原文：「v0.6 管线：六阶段可跑；folds.json 作为**输入**冻�
 | # | 验收点 | 状态 | 证据 |
 | --- | --- | --- | --- |
 | M08-1 | 六阶段可跑 | **PASS** | `npm run pipeline:v06` 退出码 0；阶段 01–06 日志见 §10.5 |
-| M08-2 | folds.json 作为输入冻结、不重生成 | **PASS** | 阶段 02 只读校验（`02-load-folds.ts` 源码无 `writeFileSync`/`mkdirSync`/`rmSync`，由结构守卫测试断言）；V4 用冻结文件 sha256 比对通过 |
-| M08-3 | 账号均值基线只用训练折 | **PASS** | `03-run-ablation.ts` 内 `v06AccountMeanBaseline(dimension, train)`；单测「基线是折内基线：评估折的基线不等于全量基线」；V12 独立复算 5 折全部通过 |
+| M08-2 | folds.json 作为输入冻结、不重生成 | **PASS** | 阶段 02 只读校验（`02-load-folds.ts` 源码无 `writeFileSync`/`mkdirSync`/`rmSync`，由结构守卫测试断言）；V4 用**钉死常量** `FROZEN_FOLDS_SHA256`（`frozen-inputs.ts`，值 `2ca273cb2a2b14df…`）与运行时哈希比对通过，阶段 02 后另有 `assertFrozenFoldsSha256` fail-closed 断言。**复核修单 B2 修正**：复核发现旧实现把同一运行时哈希同时当冻结值与实际值（自比较恒 PASS），冻结哈希只在文档里、代码未钉住——已按修单钉死并补「不一致即 fail」反向测试（§14） |
+| M08-3 | 账号均值基线只用训练折 | **PASS** | `03-run-ablation.ts` 内 `v06AccountMeanBaseline(dimension, train)`；单测「基线是折内基线：评估折的基线不等于全量基线」；V12 独立复算 5 折全部通过（复核修单 B3 后为真独立复算） |
 | M08-4 | 符号检验门槛生效 | **PASS** | `signTestPValue` 逐维配对检验（p<0.05）；选择分三级门槛（PASS／FAIL_SIGNIFICANCE／FAIL_NOT_POSITIVE），本轮结论 **FAIL_NOT_POSITIVE**；单测覆盖三个层级 + strict 策略 fail-closed |
-| M08-5 | fail-closed 校验含 V9（连跑字节一致） | **PASS** | V9 用系数区 sha256 比对（`79669a0f…`）；实跑 pass，单测「V9：重跑结果不一致即 fail」验证该校验会真失败 |
-| M08-6 | fail-closed 校验含 V12（基线折内独立复算） | **PASS** | V12 逐折独立重算基线、与评估期基线逐值比对、并断言「折内基线 ≠ 全量基线」；实跑 pass |
+| M08-5 | fail-closed 校验含 V9（连跑字节一致） | **PASS** | V9 用系数区 sha256 比对（`79669a0f…`）；实跑 pass，单测「V9：重跑结果不一致即 fail」验证该校验会真失败；复核修单 S2 另加系数区钉死校验 `assertFrozenCoefficientSha256`（§14） |
+| M08-6 | fail-closed 校验含 V12（基线折内独立复算） | **PASS** | V12 用**独立实现**（`06-validate.ts` 内直接按训练折求均值，不调用 ablation 的 `v06AccountMeanBaseline`）逐折复算、与 ablation **实际使用**的基线（`runV06Ablation` 返回值）逐维逐标签比对，并按**各自维度**断言「折内基线 ≠ 全量基线」；实跑 pass。**复核修单 B3 修正**：复核发现旧实现用同一函数同入参「复算」（恒等式）、且全量基线固定按「预测性别」算却对六个维度比较（5/6 是跨维度比较）——已按修单重写并补泄漏／偏移／缺基线／恒定维度四条反向测试（§14） |
 
 **M08 整体：PASS**（管线机制项全部达标）。
 **但**：M08 不含「模型质量达标」这一条；模型质量见 §10.4（门槛 1/2/4 FAIL）。
@@ -545,7 +570,7 @@ RED 期间修正过 3 处**测试自身**的缺陷（不是放宽断言）：①
 | --- | --- | --- |
 | 类型层 | `V06CompliantProductInput` 的字段集合里不存在 `fab`/`mindProduct`/`memoryPoint`/`groupTag`/`genderCorrected`；测试文件用 `Extract<…, keyof TInput> extends never ? true : never` 做**编译期断言** | 编译期即阻断越界 |
 | 投影层 | `projectV06CompliantInput` 是人工字段进入下游的**唯一**入口，按白名单逐字段挑选 | 运行时白名单 |
-| 行为层 | ① 输入里塞入不同人工字段 → 合规特征**完全一致**；② 抽取器源码**不得出现**人工字段访问（去注释与字符串字面量后按词边界检查） | 变异「把人工字段接回抽取器」→ 测试失败 |
+| 行为层 | ① **绕过投影层**直接喂抽取器：只差人工字段（有／无两种）的特征**完全一致**；② 投影后注入同样无效；③ 抽取器源码**不得以任何访问形态**出现人工字段（点号／方括号／模板键／`in`，复核修单 B4）；④ 特征名白名单归属（复核修单 B4） | 变异「把人工字段接回抽取器」→ 测试失败（三个存活变异重放全 KILLED，见 §14.2） |
 
 另外，阶段 06 的 **V8** 在实跑里复核「选中配置只用合规特征组、特征名前缀在合规命名空间内」；
 **V7** 复核「工件里的标签全部可追溯到冻结 intake 的画像标签集合」（数据驱动的平台口径纯净检查，不硬编码任何外部标签表）。
@@ -685,3 +710,97 @@ npm test                    # 含黄金用例与字节一致用例（合成夹�
     需注意两机账本合流策略——本机此账本现含且仅含本次 `uom-tool2-portrait-v06` v1 条目。
 22. **MLflow param 值长度上限依赖**：登记把 `promotion_policy` 全文与 32 列 `targets` JSON 写进 run params
     （mlflow 3.16.1 实测接受）。若未来 model-mlflow 升级收紧 param 长度，登记脚本需改走 tags/artifact。
+
+---
+
+## 14. 复核修单（2026-11-28：review-p2.md B1–B4／S1–S5／建议项处置）
+
+> 依据：[review-p2.md](review-p2.md)（独立复核结论 **FAIL**，阻断 4 项）。修单由主 agent 另派的实现子代理执行；
+> **作者不自评复核**——受影响范围（§9.2 守卫、V4/V10/V12、夹具、登记）须由独立复核者重验，本节只是处置记录。
+> TDD 纪律：每项先写测试取**真 RED**（本工作树 `.local/p2/fix-review/`，gitignore 区），再最小实现转 GREEN。
+> RED 日志：`red-b1-guard.log`（B1）、`red-batch.log`（B2–S5+B4，17 条失败全部 `failureType: 'testCodeFailure'`，无环境失败）、
+> `replay-1a-implicit.log`／`replay-1b-implicit.log`／`replay-1b-bracket.log`（变异重放）。
+> GREEN 日志：`green-batch.log`（三测试文件 81/81）、`green-full-test.log`（全量 436/436）。
+
+### 14.1 阻断项（B1–B4）
+
+| 项 | 处置 | 证据（file:line 为修单后位置） |
+| --- | --- | --- |
+| **B1** 真实商品记录进 tracked 测试 | **PASS（已修）** | ① 夹具替换：`packages/core/test/model-v04.test.ts:173` 起改用合成样本 `SYN-0001`（版型/面料/卖点全部虚构，期望向量按词典手算：`fit_slim`、`fabric_cotton/spandex/blend/rib`、`style_casual×2/premium/designer×2/versatile`、`func_drape`、`scene_daily`），测试名与注释中「归档第 1 行」「109326100005」全部移除；② 全仓扫描：`node scripts/check-no-archive-content.mjs`（黑名单 85 条运行时取自固化区）扫 tracked 文本 172 个——修单前命中 1 处（即旧夹具，`red-b1-guard.log`），修后 0 命中（`green-b1-guard.log`）；`git grep 109326100005` 在 tracked 源码/测试中 0 命中；裸款号常量按复核 S7 口径保留（见 §8 第 24 条）；③ 新守卫：`scripts/check-no-archive-content.mjs`（`npm run check:archive-content`），黑名单运行时构造不入库，命中与固化区缺失均退出非 0；不纳入 `npm run check`（CI 无固化数据），本地提交前运行；④ `check-data-guard.py` 未拦住的原因与守卫设计记录于 §8 第 24 条 |
+| **B2** V4 恒 PASS（自比较） | **PASS（已修）** | ① 钉死：新模块 `packages/tool2-portrait-predict/src/pipeline/v06/frozen-inputs.ts:21` 导出 `FROZEN_FOLDS_SHA256 = 2ca273cb2a2b14df…`（完整值取自 `docs/match-model-baseline.md` §7.4）；② 接线：`scripts/v06-pipeline.mjs:220` 阶段 02 后 `pipeline.assertFrozenFoldsSha256(foldsSha256)`（fail-closed）；validateV06 输入改为 `frozenFoldsSha256: pipeline.FROZEN_FOLDS_SHA256` + `actualFoldsSha256: foldsSha256`（不再自比较；结构守卫测试断言脚本里不得再出现 `frozenFoldsSha256: foldsSha256`）；③ 缺输入即 fail：`06-validate.ts` V4（见 S4）；④ 测试：`pipeline-v06.test.ts`「folds 被篡改一字节后重算的哈希必不等于钉死值，断言即抛错」（临时文件翻一字节 → sha256 变化 → 断言抛错）、「V4：冻结 folds 哈希与运行时哈希不一致即 fail」、「钉死常量与文档冻结值逐位一致」 |
+| **B3** V12 恒等式 + 跨维度 bug | **PASS（已修）** | ① ablation 返回实际基线：`03-run-ablation.ts` 在折循环内记录 `foldBaselines['fold:<折号>:<维度>']`（`:124` 接口、`:162` 记录）并随结果返回；② 独立复算：`06-validate.ts` V12 内另写 `meanDistribution`（直接按训练折逐标签累加求均值，**不调用** `v06AccountMeanBaseline`），与传入基线逐维逐标签双向比对；③ 全量基线逐维度：V12 内逐维度计算自身全量基线并按**各自维度**断言「折内 ≠ 全量」（修掉固定按「预测性别」的跨维度比较）；④ fail-closed：缺 `foldBaselines` 或缺任一键即 fail；⑤ 管线接线：`scripts/v06-pipeline.mjs` 的 `foldBaselines` 改为 `ablation[0]?.foldBaselines`（不再由脚本自算一份）；⑥ 测试四条反向：泄漏（基线误用全量）→ fail；某维度偏移 → fail；缺基线 → fail；「画像恒定维度与其自身全量基线相同必须被抓」（旧实现该场景恒 PASS——跨维度 bug 的直接回归）；⑦ 实跑：V12 PASS（5 折，`check-pipeline.log`） |
+| **B4** §9.2 守卫绕过（变异存活） | **PASS（已修，三变异重放全 KILLED）** | ① 结构守卫升级（v0.4 与 v0.6 都生效）：`model-v04.test.ts` / `pipeline-v06.test.ts` 的 `assertNoForbiddenFieldAccess`——方括号 `['fab']`／`["fab"]`／模板键 `` [`fab`] ``／`in` 检查在「剥注释、**保留字符串字面量**」层匹配（旧守卫先剥字符串导致方括号检查形同虚设），点号访问在剥字符串后匹配；② 行为层绕过投影层：两测试文件新用例直接把只差 `fab`（**有／无两种**）的原始输入喂给抽取器，断言特征完全一致——旧用例 clean/dirty 都过投影层且只比较有/有，杀不死「存在指示」型变异；③ 特征名白名单：两测试文件新增归属断言（v0.4 按版型词典＋面料 canonical＋语料取值归属；v0.6 按声明式规格语料取值归属），任何无法归属的特征名（如 `fab_present`）即失败；④ 三变异重放（KILLED 证据见 §14.2） |
+
+### 14.2 三个存活变异重放结果（复核 §3 变异 1a-implicit／1b-implicit／1b-bracket）
+
+| 变异 | 注入方式（重放） | 结果 | KILLED 证据 |
+| --- | --- | --- | --- |
+| 1a-implicit（v0.4） | `features-v04-compliant.ts` 的 `extractCompliantBaseFeatures` 以 `['f','a','b'].join('')` 取键、存在即加 `fit_fab_present` | **KILLED** | `replay-1a-implicit.log`：`fail 1`——「行为层：绕过投影层直接喂抽取器——只差 fab（有／无）的特征完全一致」；旧「投影层复核」用例仍 pass（证明旧盲区）。重放后已还原，32/32 绿 |
+| 1b-implicit（v0.6） | `features-v06.ts` 的 `extractV06Tokens` 以 join 拼键读 fab、存在即加 `attr_<fab 文本>` | **KILLED** | `replay-1b-implicit.log`：`fail 1`——「行为层：绕过投影层直接喂抽取器——只差人工字段（有／无）的特征完全一致」。重放后已还原，46/46 绿 |
+| 1b-bracket（v0.6） | 同处以 `(input as unknown as Record<string,string>)['fab']` 方括号接回 | **KILLED** | `replay-1b-bracket.log`：`fail 2`——「结构守卫：抽取器源码不得以任何访问形态读取人工字段」＋「行为层：绕过投影层…」。重放后已还原，46/46 绿；`git diff` 抽取器 0 行 |
+
+说明：join 拼键属动态构造，静态结构守卫按设计不覆盖（守卫覆盖方括号／模板键／`in`／点号四类静态形态）；
+该类变异由**行为层有/无对比**与**特征名归属白名单**杀死——三层防线各司其职。
+
+### 14.3 应修项（S1–S5）
+
+| 项 | 处置 | 证据 |
+| --- | --- | --- |
+| **S1** `productAttribute` 归类 | **PASS（用户已裁定，已披露＋已锁）** | 裁定与披露见 §8 第 23 条；取值集合钉死 `types.ts` `V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES = ['电商一年期','线下一年期','老品']`；阶段 01 fail-closed 校验 `01-prepare-dataset.ts`（逐样本 `assertV06ProductAttributeAllowed`，集合外含空值即拒绝）；测试三条：集合逐位锁定、合法放行/非法抛错、阶段 01 端到端拒绝（exceljs 造表）；spec §2.4 措辞由主 agent 同步（工作树内未提交改动，作者不代提交） |
+| **S2** 系数区哈希无机器校验 | **PASS（已修）** | `frozen-inputs.ts` 钉死 `EXPECTED_COEFFICIENT_SHA256 = 79669a0f30938c0b…` + `assertFrozenCoefficientSha256`（缺失/非 sha256/不一致即抛错）；管线在阶段 04 后调用（`scripts/v06-pipeline.mjs`）；测试「系数区哈希不一致即抛错（换求解器／换数据场景）」；实跑逐位复现 `79669a0f…`（复核变异 4 的换求解器场景今后会在阶段 04 直接失败） |
+| **S3** V10 恒 PASS | **PASS（已修）** | `06-validate.ts` V10 改为真实判定：逐折重算 OOF 词表，断言**最终词表 ⊇ 各折 OOF 词表**（该超集关系由 `buildV06Matrix` 词频单调性保证，若最终词表另有来源/被篡改即 fail），差异逐折记录进 detail；测试「最终词表缺折内 OOF 词项即 fail」（篡改 artifact 词表）；实跑 `final ⊇ OOF holds；fold 0: OOF 27 / 最终 30; …`（`check-pipeline.log`） |
+| **S4** V1/V4 缺输入默认 pass | **PASS（已修）** | `06-validate.ts` V1：无 `checksumsFile` 即 fail；V4：缺任一哈希即 fail（均照 V9 的 fail-closed 写法）；测试「V1：未提供 intake 校验清单即 fail」「V4：缺任一哈希即 fail」；管线实跑始终传入两者（V1 187 files / V4 钉死比对） |
+| **S5** 登记脚本 URL 无回环校验 | **PASS（已修）** | 新模块 `packages/tool2-portrait-predict/src/register/url-guard.ts` `assertLoopbackMlflowUrl`（只允许 `127.0.0.1`／`localhost`／`::1` 含端口；非 http(s)／非法 URL／其它主机一律抛错）；`scripts/register-model-mlflow.mjs` 在解析参数后、任何请求发出前调用（守卫模块加载失败也拒绝登记）；测试 `test/register-url-guard.test.ts` 3 条（回环放行含 `[::1]`、内网/域名/`0.0.0.0` 拒绝、协议与格式拒绝）；实测 `--url http://example.com:8080` 被拒（`check-pipeline.log` 同轮） |
+
+### 14.4 建议项（复核 §4.3）
+
+| 项 | 处置 | 证据 |
+| --- | --- | --- |
+| **S6** tool2 单一求解器／单一指标结构守卫 | **PASS（已加）** | `pipeline-v06.test.ts`「tool2 包级结构守卫」：递归扫描 `packages/tool2-portrait-predict/src/**/*.ts`，禁 `invertMatrix|gaussJordan|adjugate|cofactor|Math.log2|function (cosineSimilarity|jsSimilarity|fitRidge|predictRidge|choleskyFactor|solveCholesky)`；`@uom/core/*` 导入只允许 `model|normalize` 子路径（复核变异 4 的「新建 ridge-local」今后被此守卫抓住） |
+| **S8** 状态词 | **PASS（已改）** | §1 P2-9「部分完成」改为按子项 `PASS`；全文状态只用 `PASS/FAIL/NOT_RUN/UNKNOWN/NOT_PROVED` |
+| **S9** folds 分层键裁定 | **PASS（已闭合）** | §8 第 15 条改「已追认（主 agent，2026-11-28：冻结输入分组用途，非预测特征）」 |
+| **S7／S10／S11** | **未处理（留主 agent／用户）** | S7 款号是否属业务数据的统一口径、S10 `package-lock.json` 入 §6 追认、S11 V11 弱断言——超出本修单授权，见 §14.5 |
+
+### 14.5 仍需主 agent／用户处理
+
+1. **独立复核者重验受影响范围**（工程规范 §5.1：作者修复后由复核者重验）：§9.2 三层守卫（B4）、V4／V10／V12（B2/B3/S3/S4）、v0.4 夹具与归档内容守卫（B1）、S1 取值集合、S5 URL 守卫、v2 登记一致性。
+2. **spec §2.4 的 S1 修正与 spec §6 的 S10 追认**（`package-lock.json`）：spec 改动在工作树内（主 agent 已起草 §2.4），由主 agent 提交；S10 未动。
+3. **S7 口径**：款号（及 tool1 既有品牌/店铺常量）是否属「业务数据」请用户统一口径。
+4. **v1 的处置**：v1（Staging）保持不动；是否 archive v1 由用户决定（本修单不做任何 Stage 变更）。
+5. 断网 e2e 与黄金 G1–G5：**NOT_RUN**（工作树无真实业务数据／无 `UOM_REFERENCE_ROOT`；本轮未触及匹配内核，`ridge.ts` 本轮无改动）。
+
+### 14.6 修单涉及的文件清单
+
+- 新增：`packages/tool2-portrait-predict/src/pipeline/v06/frozen-inputs.ts`、`packages/tool2-portrait-predict/src/register/url-guard.ts`、`packages/tool2-portrait-predict/test/register-url-guard.test.ts`、`scripts/check-no-archive-content.mjs`
+- 修改：`packages/tool2-portrait-predict/src/pipeline/v06/{lib/types.ts,01-prepare-dataset.ts,03-run-ablation.ts,06-validate.ts}`、`packages/tool2-portrait-predict/src/index.ts`、`packages/tool2-portrait-predict/test/pipeline-v06.test.ts`、`packages/core/test/model-v04.test.ts`、`scripts/{v06-pipeline.mjs,register-model-mlflow.mjs}`、根 `package.json`（新增 `check:archive-content`）、`openspec/changes/p2-model-port/result.md`
+- 未动：`packages/core/src/model/**`（除测试外零改动）、`docs/**`、归档与 model-mlflow 本体、`review-p2.md`
+23. **★ 复核修单 S1——`productAttribute`（货品属性）的归类裁定与披露（2026-11-28 用户裁定，独立复核发现）**：
+    原 §2.4 把 `productAttribute`（货品属性）与心智产品／记忆点／群组打标并列列为「人工判断字段」，
+    但实现把它落在合规特征组 `attr`（`features-v06.ts` 的声明式规格），选中变体 `V1_minus_subcat` 含 `attr`，
+    `usage.inputs` 与账本 `data_columns` 均含 `productAttribute`——属「实现者对硬约束边界自行重新归类」且未披露（复核 S1）。
+    **用户裁定：追认为客观属性**——该列的实际取值只有三种生命周期类标签（`电商一年期`／`线下一年期`／`老品`），
+    性质同白名单「上新类型」，不含人工判断，**保留在合规特征集**；spec §2.4 措辞由主 agent 同步修正（工作树内已改）。
+    防回退措施：取值集合钉死在 `types.ts` 的 `V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES`，
+    阶段 01 对每一样本 fail-closed 校验（`assertV06ProductAttributeAllowed`），
+    出现集合外的任何值（含空值）即拒绝整个数据集；测试锁定集合本身与「集合外取值即失败」两条语义。
+    **影响面**：若将来数据出现新生命周期标签，属数据契约变更，须另立变更并更新集合（不得静默放行）。
+24. **★ 复核修单 B1——真实商品记录进入 tracked 测试（已修）**：`packages/core/test/model-v04.test.ts`
+    曾把归档 `product_attributes.jsonl` 第 1 行真实记录（真实款号、属性组合、整段 FAB 卖点原文）逐字抄进测试夹具。
+    已改为**合成样本**（虚构款号 `SYN-0001`、合成卖点文本，期望向量按词典逐项手算写死，特征位覆盖面与原夹具相当）。
+    全仓扫描（对照主仓固化区）：tracked 文件中真实内容片段仅此一处（复现命令见 §14）；
+    裸款号常量（`docs/match-model-baseline.md` 的 `109926124101`、`pipeline.test.ts` 的标识用款号）按复核 S7 口径保留——
+    仅作标识、与 main 先例一致，不附带属性组合或文案。tool1 包内既有品牌／店铺常量属 main 既有先例，不在本变更范围。
+    **`check-data-guard.py` 为什么没拦住**：它只查「git 索引里的数据目录／数据文件扩展名／超大文件」，
+    不检查 tracked **文本文件的内容**。已补轻量守卫 `scripts/check-no-archive-content.mjs`
+    （`npm run check:archive-content`）：运行时从主仓固化区读若干真实行现场构造子串黑名单
+    （v0.4 商品属性 FAB 片段＋记录前缀、画像 CSV 数据行、v0.6 画像元信息行；黑名单不入库），
+    对全部 tracked 文本文件做子串匹配，命中即退出非 0；固化区不可用同样退出非 0（fail-closed）。
+    该守卫**不纳入 `npm run check`**（CI 无固化数据，也不得接触真实数据）；本地在提交前运行。
+25. **★ 复核修单 C 项——模型包升版 v2 并登记（v1 不动）**：修单后 `npm run pipeline:v06` 复跑，
+    `predict.mjs` 与已登记 v1 **逐字节一致**；`manifest.json` 相对 v1 的差异为 `model.version`（1→2）与
+    `training.trainedAt`（设计上的非确定性溯源区），`gateConclusion`（含 V1–V12 的 id+result）、
+    metrics、data 指纹、usage 全部逐位一致——门槛结论照旧如实（FAIL_NOT_POSITIVE）。
+    按「manifest 字节有变即升版」的口径登记 **v2 · Staging**（用户已授权 Staging）：
+    Registry `uom-tool2-portrait-v06` v2 · READY，run `abd1e4270fae4c4a83dd68cdfb200cfe`（FINISHED），
+    `data_sha256` 与 v1 相同（`65cf98f6…`），folds/系数区双哈希与 v1 相同；v1（Staging，run `eb3855e6…`）保持不动；
+    model-mlflow 代码本体未改（其 git 工作树干净），登记用后已停掉本地 MLflow server（127.0.0.1:5021）。
