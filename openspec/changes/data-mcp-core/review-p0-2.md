@@ -15,7 +15,7 @@
 | 复核工作目录 | `/tmp/uom-review-p0-2`（隔离验证根） |
 | 主工作目录 | `/Users/huangbo/Dev/Projects/user-operation-model`（**未写入**，仅只读读取真实样本数据） |
 | 变更规模 | 18 个文件，+1438 行；新增 `packages/core` 工程骨架 |
-| 复核依据 | `openspec/changes/data-mcp-core/spec.md` §3（DM01–DM16）、§4（C1–C4）、§5、§6、§7、§9；`docs/engineering-workflow.md` §3、§4.3、§4.5、§4.6、§5.1、§5.2、§5.3、§7、§8、§9.1、§9.2、§10、§11；`docs/data-source-review.md` §3、§4.2、§4.3、§8.1；`docs/产品讨论稿-v0.1.md` §7.1–§7.4 |
+| 复核依据 | `openspec/changes/data-mcp-core/spec.md` §3（DM01–DM16）、§4（C1–C4）、§5、§6、§7、§9；`docs/engineering-workflow.md` §3、§4.3、§4.5、§4.6、§5.1、§5.2、§5.3、§7、§8、§9.1、§9.2、§10、§11；`docs/data-source-review.md` §3、§4.2、§4.3、§8.1；`docs/产品讨论稿-v0.2.md` §7.1–§7.4 |
 | 对照数据 | `data/domains/07_人群画像/`（抖音 CSV ×2、天猫 XLSX ×2、京东 XLSX ×2）与 `data/domains/04_商品信息/`（2 张商品主表），**只读** |
 | 复核者独立性 | 独立复核 Agent，与候选作者不同；全部结论基于本目录实跑与只读数据核对 |
 

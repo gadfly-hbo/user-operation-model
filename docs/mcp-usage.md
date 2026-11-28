@@ -1,7 +1,7 @@
 # 数据 MCP 使用说明
 
 > P0-5 交付物 · 2026-11-26
-> 相关：[工程规范](engineering-workflow.md) · [归一化规则](normalize-rules.md) · [产品讨论稿 §3](产品讨论稿-v0.1.md)
+> 相关：[工程规范](engineering-workflow.md) · [归一化规则](normalize-rules.md) · [产品讨论稿 §3](产品讨论稿-v0.2.md)
 
 ## 启动
 

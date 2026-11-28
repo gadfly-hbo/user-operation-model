@@ -3,7 +3,7 @@
 P1 阶段规格：工具1 共享匹配内核 + 六维评分 + 静态看板 + 错配清单
 
 > 状态：**待用户确认**。本规格为规范 §4.1 要求的变更规格，确认后才开始实现。
-> 相关：[工程规范](../../../docs/engineering-workflow.md) · [产品讨论稿 v0.1](../../../docs/产品讨论稿-v0.1.md) · [P0 实施记录](../data-mcp-core/result.md) · [UI 设计说明](../../../docs/ui-design.md)
+> 相关：[工程规范](../../../docs/engineering-workflow.md) · [产品讨论稿 v0.1](../../../docs/产品讨论稿-v0.2.md) · [P0 实施记录](../data-mcp-core/result.md) · [UI 设计说明](../../../docs/ui-design.md)
 
 ---
 
