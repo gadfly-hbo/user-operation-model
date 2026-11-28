@@ -31,6 +31,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import ExcelJS from 'exceljs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..');
@@ -148,7 +149,38 @@ function looksBinary(content) {
   return content.includes('\u0000');
 }
 
-function run() {
+/**
+ * xlsx 单元格文本抽取（data-templates 复核修单 S3）。
+ *
+ * `.xlsx` 是二进制 zip，原先按扩展名跳过 → 模板内容不在扫描范围（review.md
+ * DT4 子项 NOT_PROVED）。现在把 tracked xlsx 的全部单元格抽成文本后走同一份
+ * 黑名单比对；exceljs 是 @uom/core 既有依赖，不新增依赖、不出网。
+ */
+async function extractXlsxText(path) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(join(REPO_ROOT, path));
+  const parts = [];
+  for (const sheet of workbook.worksheets) {
+    parts.push(sheet.name);
+    for (let row = 1; row <= sheet.rowCount; row += 1) {
+      for (let column = 1; column <= sheet.columnCount; column += 1) {
+        const value = sheet.getRow(row).getCell(column).value;
+        if (value == null) continue;
+        if (typeof value === 'object') {
+          const rich = value;
+          if (Array.isArray(rich.richText)) parts.push(rich.richText.map((part) => part.text).join(''));
+          else if (typeof rich.text === 'string') parts.push(rich.text);
+          else if (rich.result !== undefined) parts.push(String(rich.result));
+        } else {
+          parts.push(String(value));
+        }
+      }
+    }
+  }
+  return parts.join('\n');
+}
+
+async function run() {
   const envRoot = process.env.UOM_ARCHIVE_FIXED_ROOT;
   const candidates = [];
   if (envRoot) candidates.push(resolve(envRoot));
@@ -175,15 +207,26 @@ function run() {
 
   const hits = [];
   let scanned = 0;
+  let xlsxScanned = 0;
   for (const path of tracked) {
-    if (!isTextFile(path)) continue;
     let content;
-    try {
-      content = readFileSync(join(REPO_ROOT, path), 'utf8');
-    } catch {
-      continue;
+    if (extname(path).toLowerCase() === '.xlsx') {
+      // 二进制 zip：抽单元格文本后比对（S3），不再按扩展名跳过
+      try {
+        content = await extractXlsxText(path);
+      } catch {
+        continue;
+      }
+      xlsxScanned += 1;
+    } else {
+      if (!isTextFile(path)) continue;
+      try {
+        content = readFileSync(join(REPO_ROOT, path), 'utf8');
+      } catch {
+        continue;
+      }
+      if (looksBinary(content)) continue;
     }
-    if (looksBinary(content)) continue;
     scanned += 1;
     for (let index = 0; index < needles.length; index += 1) {
       if (content.includes(needles[index].value)) {
@@ -194,7 +237,7 @@ function run() {
 
   process.stdout.write(
     `归档内容守卫：黑名单 ${needles.length} 条（运行时取自 ${archiveRoot}），` +
-      `扫描 tracked 文本文件 ${scanned} 个。\n`,
+      `扫描 tracked 文本文件 ${scanned - xlsxScanned} 个＋xlsx 单元格文本 ${xlsxScanned} 个。\n`,
   );
   if (hits.length > 0) {
     for (const hit of hits) process.stderr.write(`ERROR tracked 文件含归档真实内容片段: ${hit.path}（黑名单 ${hit.needle}）\n`);
