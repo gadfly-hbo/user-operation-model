@@ -24,7 +24,6 @@ import {
   parseProductChannelTable,
 } from '../normalize/relations.js';
 import {
-  deriveActualUnitPrice,
   parseChannelPerformanceTable,
   parseProductPerformanceTable,
 } from '../normalize/performance.js';
@@ -54,6 +53,7 @@ import type {
   RecencyEntry,
 } from '../normalize/types.js';
 import type { ChannelRecord } from '../normalize/types.js';
+import type { FunnelByMonth, PerformanceMetrics } from '../product/types.js';
 import type { ProductDossier } from '../product/types.js';
 
 /** 索引构建选项。 */
@@ -352,7 +352,22 @@ export async function buildIndex(options: BuildIndexOptions = {}): Promise<DataI
   applyProductChannel(scopedProducts, productChannels, issues);
   applyFunnel(scopedProducts, funnel);
 
-  const months = [...new Set(scopedPortraits.map((portrait) => portrait.month).filter(Boolean))].sort();
+  // 月份并集（切片 A · SA-09）：画像、经营指标、漏斗、商品↔渠道四类来源；
+  // 区间标签按字面保留（与现状一致），空月份不入并集
+  const monthLabels = new Set<string>();
+  for (const portrait of scopedPortraits) {
+    if (portrait.month.trim() !== '') monthLabels.add(portrait.month);
+  }
+  for (const entry of productPerformance ?? []) {
+    if (entry.month && entry.month.trim() !== '') monthLabels.add(entry.month.trim());
+  }
+  for (const entry of funnel ?? []) {
+    if (entry.month && entry.month.trim() !== '') monthLabels.add(entry.month.trim());
+  }
+  for (const entry of productChannels ?? []) {
+    if (entry.month && entry.month.trim() !== '') monthLabels.add(entry.month.trim());
+  }
+  const months = [...monthLabels].sort();
   const unavailable: Record<string, string> = {};
   for (const probe of DATA_SOURCE_PROBES) {
     const missing = probe.probe(dataRoot);
@@ -652,16 +667,17 @@ function applyProductScope(
 }
 
 /**
- * 填充商品经营指标。
+ * 填充商品经营指标（切片 A · SA-04）。
  *
+ * - 按「月份 → 指标」键控，多月份**全部保留**，不再取最新月份、不再记塌缩 issue
+ * - 源行月份为空归入 `unknown` 键（U3）
  * - 缺失字段保持缺失，**不插补**
- * - 零售额与零售量齐全时推出真实成交单价（仅当单价原本缺失）
- * - 同款号多个月份时取最新月份，其余记 issue
+ * - 按月指标**不写回** `price`（SA-08）：单价解析统一走 `resolveUnitPrice`
  */
 function applyProductPerformance(
   products: ProductDossier[],
   entries: ProductPerformanceEntry[] | undefined,
-  issues: NormalizationIssue[],
+  _issues: NormalizationIssue[],
 ): void {
   if (!entries || entries.length === 0) return;
   const bySpu = new Map<string, ProductPerformanceEntry[]>();
@@ -674,40 +690,21 @@ function applyProductPerformance(
   for (const product of products) {
     const rows = bySpu.get(product.spu);
     if (!rows || rows.length === 0) continue;
-    const latest = pickLatest(rows);
-    if (rows.length > 1) {
-      issues.push({
-        kind: 'parse-error',
-        severity: 'warning',
-        sourceLabel: product.spu,
-        message: `款号 ${product.spu} 的经营指标覆盖 ${rows.length} 个月份，档案取最新月份 ${latest.month ?? '未知'}`,
-      });
-    }
-
     const performance: NonNullable<ProductDossier['performance']> = {};
-    if (latest.sellThroughRate !== undefined) performance.sellThroughRate = latest.sellThroughRate;
-    if (latest.returnRate !== undefined) performance.returnRate = latest.returnRate;
-    if (latest.refundRate !== undefined) performance.refundRate = latest.refundRate;
-    if (latest.grossMargin !== undefined) performance.grossMargin = latest.grossMargin;
-    if (latest.uv !== undefined) performance.uv = latest.uv;
-    if (latest.conversionRate !== undefined) performance.conversionRate = latest.conversionRate;
+    for (const row of rows) {
+      const key = row.month && row.month.trim() !== '' ? row.month.trim() : 'unknown';
+      const metrics: PerformanceMetrics = {};
+      if (row.retailAmount !== undefined) metrics.retailAmount = row.retailAmount;
+      if (row.retailQty !== undefined) metrics.retailQty = row.retailQty;
+      if (row.sellThroughRate !== undefined) metrics.sellThroughRate = row.sellThroughRate;
+      if (row.returnRate !== undefined) metrics.returnRate = row.returnRate;
+      if (row.refundRate !== undefined) metrics.refundRate = row.refundRate;
+      if (row.grossMargin !== undefined) metrics.grossMargin = row.grossMargin;
+      if (row.uv !== undefined) metrics.uv = row.uv;
+      if (row.conversionRate !== undefined) metrics.conversionRate = row.conversionRate;
+      performance[key] = metrics;
+    }
     if (Object.keys(performance).length > 0) product.performance = performance;
-
-    product.price ??= {};
-    if (product.price.retailAmount === undefined && latest.retailAmount !== undefined) {
-      product.price.retailAmount = latest.retailAmount;
-    }
-    if (product.price.retailQty === undefined && latest.retailQty !== undefined) {
-      product.price.retailQty = latest.retailQty;
-    }
-    const unitPrice = deriveActualUnitPrice(
-      product.price.actualUnitPrice,
-      product.price.retailAmount,
-      product.price.retailQty,
-    );
-    if (unitPrice !== undefined && product.price.actualUnitPrice === undefined) {
-      product.price.actualUnitPrice = unitPrice;
-    }
   }
 }
 
@@ -748,11 +745,11 @@ function applyChannelPerformance(
   }
 }
 
-/** 填充商品↔渠道成交。 */
+/** 填充商品↔渠道成交（切片 A · SA-04：按「渠道 → 月份」键控，多月份保留）。 */
 function applyProductChannel(
   products: ProductDossier[],
   entries: ProductChannelEntry[] | undefined,
-  issues: NormalizationIssue[],
+  _issues: NormalizationIssue[],
 ): void {
   if (!entries || entries.length === 0) return;
   const bySpu = new Map<string, ProductChannelEntry[]>();
@@ -765,26 +762,13 @@ function applyProductChannel(
   for (const product of products) {
     const rows = bySpu.get(product.spu);
     if (!rows || rows.length === 0) continue;
-    const byChannel = new Map<string, ProductChannelEntry[]>();
-    for (const row of rows) {
-      const list = byChannel.get(row.channelId) ?? [];
-      list.push(row);
-      byChannel.set(row.channelId, list);
-    }
     const performance: NonNullable<ProductDossier['channelPerformance']> = {};
-    for (const [channelId, channelRows] of byChannel) {
-      const latest = pickLatest(channelRows);
-      if (channelRows.length > 1) {
-        issues.push({
-          kind: 'parse-error',
-          severity: 'warning',
-          sourceLabel: product.spu,
-          message: `款号 ${product.spu} 在渠道 ${channelId} 的成交记录覆盖 ${channelRows.length} 个月份，档案取最新月份 ${latest.month ?? '未知'}`,
-        });
-      }
-      performance[channelId] = {
-        ...(latest.retailAmount !== undefined ? { retailAmount: latest.retailAmount } : {}),
-        ...(latest.retailQty !== undefined ? { retailQty: latest.retailQty } : {}),
+    for (const row of rows) {
+      const monthKey = row.month && row.month.trim() !== '' ? row.month.trim() : 'unknown';
+      const channelMonths = (performance[row.channelId] ??= {});
+      channelMonths[monthKey] = {
+        ...(row.retailAmount !== undefined ? { retailAmount: row.retailAmount } : {}),
+        ...(row.retailQty !== undefined ? { retailQty: row.retailQty } : {}),
       };
     }
     if (Object.keys(performance).length > 0) product.channelPerformance = performance;
@@ -818,7 +802,14 @@ function applyFunnel(
     if (!rows || rows.length === 0) continue;
     const metrics = rows
       .filter((row) => row.phase === 'launch' || row.phase === 'growth' || row.phase === 'clearance')
-      .map((row) => ({ phase: row.phase as 'launch' | 'growth' | 'clearance', metrics: row.metrics }));
-    if (metrics.length > 0) product.funnel = metrics;
+      .map((row) => ({ phase: row.phase as 'launch' | 'growth' | 'clearance', metrics: row.metrics, month: row.month }));
+    if (metrics.length > 0) {
+      const funnel: NonNullable<ProductDossier['funnel']> = {};
+      for (const item of metrics) {
+        funnel[item.month ?? 'unknown'] ??= {};
+        funnel[item.month ?? 'unknown']![item.phase] = item.metrics;
+      }
+      product.funnel = funnel;
+    }
   }
 }

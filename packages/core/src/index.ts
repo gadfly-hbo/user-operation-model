@@ -31,5 +31,6 @@ export type {
   PriceConditionOp,
 } from './match/config.js';
 export { scoreMatch } from './match/kernel.js';
+export { resolveUnitPrice, resolveRetailAmount, type ResolvedUnitPrice } from './match/price.js';
 export { parsePortraitWindow, isIntervalWindow, coversMonth } from './match/month.js';
 export type { PortraitWindow } from './match/month.js';

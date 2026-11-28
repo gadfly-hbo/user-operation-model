@@ -51,14 +51,12 @@ export interface FabInfo {
   benefit?: string[];
 }
 
-/** 生命周期行为漏斗。 */
-export interface FunnelMetrics {
-  phase: 'launch' | 'growth' | 'clearance';
-  metrics: Record<string, number>;
-}
-
 /** 单品经营指标。 */
 export interface PerformanceMetrics {
+  /** 该月零售额（`product-performance.csv`）。缺失不插补。 */
+  retailAmount?: number;
+  /** 该月零售量（`product-performance.csv`）。缺失不插补。 */
+  retailQty?: number;
   sellThroughRate?: number;
   returnRate?: number;
   refundRate?: number;
@@ -70,11 +68,24 @@ export interface PerformanceMetrics {
   stockoutRate?: number;
 }
 
+/**
+ * 生命周期漏斗（切片 A · SA-04）：按「月份 × 阶段」存放，同阶段不重复。
+ * 源行月份为空时归入键 `unknown`。
+ */
+export type FunnelByMonth = Record<
+  string,
+  Partial<Record<'launch' | 'growth' | 'clearance', Record<string, number>>>
+>;
+
 /** 单品全生命周期档案。 */
 export interface ProductDossier {
   /** 款号，主键。 */
   spu: string;
-  /** 数据契约版本，随结构演进而更新。 */
+  /**
+   * 数据契约版本，随结构演进而更新。
+   * `0.2.0`（切片 A · SA-04）：经营指标／漏斗／渠道成交按月存取，
+   * 单数 `portrait` 字段由 `portraits` 数组取代。
+   */
   schemaVersion: string;
   name?: string;
   brand?: string;
@@ -102,10 +113,15 @@ export interface ProductDossier {
    * 背对背隔离约束下，这些字段不得进入预测路径。
    */
   comparisonOnly?: Record<string, string[]>;
-  portrait?: { month: string };
-  funnel?: FunnelMetrics[];
-  performance?: PerformanceMetrics;
-  channelPerformance?: Record<string, { retailAmount?: number; retailQty?: number }>;
+  /**
+   * 单品人群画像（切片 A · SA-05 查询形态见 MCP `get_product_dossier`）。
+   * 档案本身不持有画像：画像在索引的 `portraits` 集合中按实体与月份键控。
+   */
+  funnel?: FunnelByMonth;
+  /** 单品经营指标，按月份键控（SA-04）；源行月份为空归入 `unknown`。 */
+  performance?: Record<string, PerformanceMetrics>;
+  /** 商品↔渠道成交，按「渠道 → 月份 → 成交」键控（SA-04）。 */
+  channelPerformance?: Record<string, Record<string, { retailAmount?: number; retailQty?: number }>>;
   /** 未在字段目录登记的字段原样保留，不丢数据。 */
   extra?: Record<string, unknown>;
 }

@@ -399,7 +399,8 @@ describe('现状不变性：其余工具与 main 基线一致', () => {
       args: { spu: 'SPU-001' },
       expected: {
         ok: true,
-        data: { spu: 'SPU-001', schemaVersion: '0.1.0', price: { tagPrice: 199 } },
+        // 切片 A（SA-04）：按月存取的档案契约升版 0.2.0
+        data: { spu: 'SPU-001', schemaVersion: '0.2.0', price: { tagPrice: 199 } },
       },
     },
     {

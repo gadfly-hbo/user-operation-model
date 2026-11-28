@@ -442,31 +442,33 @@ describe('聚合口径表（DC08）', () => {
 });
 
 describe('经营指标接入（DC09）', () => {
-  test('商品经营指标填充 performance，缺失字段不插补', async () => {
+  test('商品经营指标按月填充 performance，缺失字段不插补', async () => {
     const root = await createP0DataRoot({ include: ['tables/product-performance.csv'] });
     const index = await buildIndex({ dataRoot: root });
     const product = index.products.find((item) => item.spu === 'SPU-001');
-    assert.ok(product?.performance);
-    assert.ok(Math.abs((product!.performance!.sellThroughRate ?? 0) - 0.8) < 1e-9);
-    assert.ok(Math.abs((product!.performance!.grossMargin ?? 0) - 0.45) < 1e-9);
-    assert.equal(product!.performance!.uv, 5000);
+    assert.ok(product?.performance?.['2026-01'], '指标应落在该月键下');
+    assert.ok(Math.abs((product!.performance!['2026-01']!.sellThroughRate ?? 0) - 0.8) < 1e-9);
+    assert.ok(Math.abs((product!.performance!['2026-01']!.grossMargin ?? 0) - 0.45) < 1e-9);
+    assert.equal(product!.performance!['2026-01']!.uv, 5000);
 
     const partial = index.products.find((item) => item.spu === 'SPU-002');
-    assert.ok(partial?.performance);
-    assert.equal(partial!.performance!.sellThroughRate, undefined, '缺失的售罄率不插补');
-    assert.equal(partial!.performance!.grossMargin, undefined, '缺失的毛利率不插补');
-    assert.equal(partial!.performance!.conversionRate, undefined, '缺失的转化率不插补');
-    assert.ok(Math.abs((partial!.performance!.returnRate ?? 0) - 0.06) < 1e-9);
+    assert.ok(partial?.performance?.['2026-01']);
+    assert.equal(partial!.performance!['2026-01']!.sellThroughRate, undefined, '缺失的售罄率不插补');
+    assert.equal(partial!.performance!['2026-01']!.grossMargin, undefined, '缺失的毛利率不插补');
+    assert.equal(partial!.performance!['2026-01']!.conversionRate, undefined, '缺失的转化率不插补');
+    assert.ok(Math.abs((partial!.performance!['2026-01']!.returnRate ?? 0) - 0.06) < 1e-9);
   });
 
-  test('零售额与零售量齐全时推出真实成交单价', async () => {
+  test('按月指标的零售额／零售量落在 performance 键下（SA-08：不再写回 price）', async () => {
     const root = await createP0DataRoot({ include: ['tables/product-performance.csv'] });
     const index = await buildIndex({ dataRoot: root });
     const product = index.products.find((item) => item.spu === 'SPU-001');
-    assert.equal(product?.price?.actualUnitPrice, 200);
+    assert.equal(product?.performance?.['2026-01']?.retailAmount, 12000);
+    assert.equal(product?.performance?.['2026-01']?.retailQty, 60);
+    assert.equal(product?.price?.actualUnitPrice, undefined, '单价解析统一走 resolveUnitPrice');
   });
 
-  test('缺零售量时不推出成交单价', async () => {
+  test('缺零售量时该月指标不带零售量，不推出成交单价', async () => {
     const root = await createP0DataRoot({
       include: ['tables/product-performance.csv'],
       tables: {
@@ -478,6 +480,7 @@ describe('经营指标接入（DC09）', () => {
     });
     const index = await buildIndex({ dataRoot: root });
     const product = index.products.find((item) => item.spu === 'SPU-001');
+    assert.equal(product?.performance?.['2026-01']?.retailQty, undefined, '缺零售量不落位');
     assert.equal(product?.price?.actualUnitPrice, undefined, '缺零售量不推出成交单价');
   });
 
