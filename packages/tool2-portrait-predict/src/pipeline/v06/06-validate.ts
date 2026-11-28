@@ -8,13 +8,20 @@
  *   工件结构与预测自检（第 66–98 行）、平台口径纯净（第 100–112 行）、
  *   验收门槛记录（第 114–119 行）、fail-closed 退出（第 125–128 行）。
  *
- * ## 本移植新增的两条校验（P2 规格 M08 明列）
+ * ## 本移植新增的两条校验（P2 规格 M08 明列；语义经复核修单 B2／B3／S3／S4 修正）
  *
  * - **V9 连跑字节一致**：重跑一次最终训练，比对**确定性系数区**的 sha256。
  *   归档的工件把 `trainedAt` 混在系数区里，比对必然失败；
  *   本移植按 P2 规格 §2.5 把工件拆成「系数区 + 溯源区」后才可比。
- * - **V12 基线折内独立复算**：逐折**独立重算**账号均值基线并与评估阶段用的基线比对，
- *   同时断言「折内基线 ≠ 全量基线」，以此证明基线确实没有用评估折的信息。
+ * - **V12 基线折内独立复算**：用**独立实现**（本文件内直接按训练折求均值，不调用
+ *   ablation 的 `v06AccountMeanBaseline`）逐折复算账号均值基线，与 ablation **实际使用**
+ *   的基线（由 `runV06Ablation` 返回、调用方传入）逐维逐标签比对；同时按**各自维度**
+ *   断言「折内基线 ≠ 全量基线」，证明基线确实没有用评估折的信息。
+ *   缺基线输入即 fail（fail-closed）。
+ *
+ * 其余修单修正：V1／V4 缺输入时 fail（不再默认 pass）；V4 的冻结值由
+ * `frozen-inputs.ts` 钉死常量提供（不得用运行时哈希自比较）；V10 改为真实判定
+ * （最终词表必须是各折 OOF 词表的超集，差异显式记录）。
  *
  * 校验失败一律返回 `fail`，由调用方按 fail-closed 退出（非 0 退出码）。
  */
@@ -24,7 +31,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { buildV06Matrix, encodeV06Samples } from './lib/features-v06.js';
-import { normalizeV06Distribution, v06AccountMeanBaseline } from './lib/train-v06.js';
+import { normalizeV06Distribution } from './lib/train-v06.js';
 import { V06_COMPLIANT_GROUPS } from './lib/features-v06.js';
 import { V06_TARGET_DIMENSIONS } from './lib/types.js';
 import type { V06Dataset } from './01-prepare-dataset.js';
@@ -53,13 +60,13 @@ export interface V06ValidateInput {
   metrics: V06Metrics;
   /** V9：重跑一次最终训练（必须返回新的工件对象） */
   rerunFinalTraining?: () => V06ModelArtifact;
-  /** V1：intake 校验清单路径（给了就必须逐条校验） */
+  /** V1：intake 校验清单路径（给了就必须逐条校验；**缺省即 V1 fail**，复核修单 S4） */
   checksumsFile?: string;
-  /** V4：冻结 folds 文件的 sha256（登记值） */
+  /** V4：冻结 folds 的钉死 sha256（来自 `frozen-inputs.ts`；缺省即 V4 fail，复核修单 B2／S4） */
   frozenFoldsSha256?: string;
-  /** V4：冻结 folds 文件当前的实际 sha256 */
+  /** V4：冻结 folds 文件当前的实际 sha256（缺省即 V4 fail，复核修单 B2／S4） */
   actualFoldsSha256?: string;
-  /** V12：评估阶段用到的折内基线（键为 `fold:<折号>:<维度>`） */
+  /** V12：ablation **实际使用**的折内基线（`runV06Ablation` 返回值；键 `fold:<折号>:<维度>`；缺省即 V12 fail，复核修单 B3） */
   foldBaselines?: Record<string, Record<string, number>>;
 }
 
@@ -74,33 +81,36 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
   const { dataset, folds, selection, artifact, metrics } = input;
 
   // ---- V1 intake 校验清单 ----
-  if (input.checksumsFile) {
-    const root = dirname(input.checksumsFile);
-    const lines = readFileSync(input.checksumsFile, 'utf8')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    let mismatches = 0;
-    for (const line of lines) {
-      const parts = line.split(/\s+/);
-      const expected = parts[0];
-      const relative = parts[1];
-      if (!expected || !relative) continue;
-      if (sha256File(join(root, relative.replace(/^\.\//, ''))) !== expected) mismatches += 1;
+  {
+    if (input.checksumsFile) {
+      const root = dirname(input.checksumsFile);
+      const lines = readFileSync(input.checksumsFile, 'utf8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      let mismatches = 0;
+      for (const line of lines) {
+        const parts = line.split(/\s+/);
+        const expected = parts[0];
+        const relative = parts[1];
+        if (!expected || !relative) continue;
+        if (sha256File(join(root, relative.replace(/^\.\//, ''))) !== expected) mismatches += 1;
+      }
+      checks.push({
+        id: 'V1',
+        check: 'intake checksums unchanged',
+        result: mismatches === 0 ? 'pass' : 'fail',
+        detail: `${lines.length} files, ${mismatches} mismatches`,
+      });
+    } else {
+      // 复核修单 S4：fail-open（缺输入默认 pass）改为 fail-closed，照 V9 的写法
+      checks.push({
+        id: 'V1',
+        check: 'intake checksums unchanged',
+        result: 'fail',
+        detail: '未提供 intake 校验清单路径，无法逐条校验（fail-closed，不默认 pass）',
+      });
     }
-    checks.push({
-      id: 'V1',
-      check: 'intake checksums unchanged',
-      result: mismatches === 0 ? 'pass' : 'fail',
-      detail: `${lines.length} files, ${mismatches} mismatches`,
-    });
-  } else {
-    checks.push({
-      id: 'V1',
-      check: 'intake checksums unchanged',
-      result: 'pass',
-      detail: '未提供校验清单路径，跳过逐条校验（数据集阶段已记录清单结果）',
-    });
   }
 
   // ---- V2 数据集完整性 ----
@@ -147,7 +157,7 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
     });
   }
 
-  // ---- V4 folds 是冻结输入 ----
+  // ---- V4 folds 是冻结输入（复核修单 B2／S4：与钉死值比对；缺任一值即 fail） ----
   {
     if (input.frozenFoldsSha256 && input.actualFoldsSha256) {
       const same = input.frozenFoldsSha256 === input.actualFoldsSha256;
@@ -160,11 +170,14 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
           : `登记 ${input.frozenFoldsSha256} ≠ 实际 ${input.actualFoldsSha256}`,
       });
     } else {
+      // 复核修单 B2／S4：冻结值缺失时不得默认 pass（旧实现此处 fail-open，
+      // 且管线曾把同一运行时哈希同时当冻结值与实际值——自比较恒 PASS）。
+      // 冻结值由 `frozen-inputs.ts` 的 FROZEN_FOLDS_SHA256 钉死，管线必须显式传入。
       checks.push({
         id: 'V4',
         check: 'folds are a frozen input (not regenerated by this pipeline)',
-        result: 'pass',
-        detail: '未提供冻结 folds 的哈希登记值；阶段 02 源码无写文件路径（结构性保证）',
+        result: 'fail',
+        detail: '未提供冻结 folds 的哈希登记值或实际值（fail-closed，不默认 pass）',
       });
     }
   }
@@ -299,29 +312,40 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
     }
   }
 
-  // ---- V10 OOF 词表 ≠ 最终词表（显式记录） ----
+  // ---- V10 最终词表 ⊇ 各折 OOF 词表（复核修单 S3：真实判定，差异显式记录） ----
   {
     const groups = new Set(artifact.coefficients.selectedConfig.groups);
     const finalVocabulary = artifact.coefficients.dimensionModels[0]?.featureNames ?? [];
-    const firstFold = folds.folds[0] ?? [];
-    const trainSamples = dataset.samples.filter((sample) => !firstFold.includes(sample.sku));
-    const foldVocabulary =
-      trainSamples.length > 0
-        ? buildV06Matrix(
-            trainSamples,
-            trainSamples,
-            groups,
-            artifact.coefficients.featureMinCount,
-          ).featureNames
-        : [];
-    const differs =
-      finalVocabulary.length !== foldVocabulary.length ||
-      finalVocabulary.some((name, index) => name !== foldVocabulary[index]);
+    const problems: string[] = [];
+    const notes: string[] = [];
+    for (let fold = 0; fold < folds.folds.length; fold += 1) {
+      const testSkus = folds.folds[fold] ?? [];
+      const trainSamples = dataset.samples.filter((sample) => !testSkus.includes(sample.sku));
+      if (trainSamples.length === 0) {
+        problems.push(`第 ${fold} 折训练样本为空`);
+        continue;
+      }
+      const foldVocabulary =
+        buildV06Matrix(
+          trainSamples,
+          trainSamples,
+          groups,
+          artifact.coefficients.featureMinCount,
+        ).featureNames;
+      const missing = foldVocabulary.filter((name) => !finalVocabulary.includes(name));
+      if (missing.length > 0) {
+        problems.push(`第 ${fold} 折 OOF 词表有 ${missing.length} 个词不在最终词表（如 ${missing[0]}）`);
+      }
+      notes.push(`fold ${fold}: OOF ${foldVocabulary.length} / 最终 ${finalVocabulary.length}`);
+    }
     checks.push({
       id: 'V10',
-      check: 'OOF vocabulary vs final vocabulary difference is explicitly recorded',
-      result: 'pass',
-      detail: `differs=${differs}；最终词表 ${finalVocabulary.length} 个；第 0 折 OOF 词表 ${foldVocabulary.length} 个`,
+      check: 'final vocabulary is a superset of every fold OOF vocabulary; differences recorded',
+      result: problems.length === 0 ? 'pass' : 'fail',
+      detail:
+        problems.length === 0
+          ? `final ⊇ OOF holds；${notes.join('; ')}`
+          : problems.join('; '),
     });
   }
 
@@ -337,35 +361,70 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
     });
   }
 
-  // ---- V12 基线折内独立复算 ----
+  // ---- V12 基线折内独立复算（复核修单 B3：独立实现 + 逐维度比对 + fail-closed） ----
   {
     const problems: string[] = [];
     const details: string[] = [];
-    for (let fold = 0; fold < folds.folds.length; fold += 1) {
-      const testSkus = folds.folds[fold] ?? [];
-      const trainSamples = dataset.samples.filter((sample) => !testSkus.includes(sample.sku));
-      if (trainSamples.length === 0) {
-        problems.push(`第 ${fold} 折训练样本为空`);
-        continue;
-      }
-      const globalBaseline = v06AccountMeanBaseline('预测性别', dataset.samples);
-      for (const dimension of V06_TARGET_DIMENSIONS) {
-        const foldBaseline = v06AccountMeanBaseline(dimension, trainSamples);
-        const key = `fold:${fold}:${dimension}`;
-        const provided = input.foldBaselines?.[key];
-        if (provided) {
-          const same = Object.keys(foldBaseline).every(
-            (label) => Math.abs((foldBaseline[label] ?? 0) - (provided[label] ?? 0)) < 1e-12,
-          );
-          if (!same) problems.push(`${key} 与独立复算结果不一致`);
+    // 独立实现：**不调用** `v06AccountMeanBaseline`（ablation 用的那一份），
+    // 在此直接按训练折逐标签累加求均值。两份实现口径必须一致，
+    // 否则 ablation 基线有任何偏差（例如误用全量样本）都会在这里现形。
+    const meanDistribution = (
+      samples: readonly V06Dataset['samples'][number][],
+      dimension: string,
+    ): Record<string, number> => {
+      const sums: Record<string, number> = {};
+      for (const sample of samples) {
+        const distribution = (sample.portraits as Record<string, Record<string, number>>)[dimension] ?? {};
+        for (const [label, value] of Object.entries(distribution)) {
+          sums[label] = (sums[label] ?? 0) + value;
         }
-        // 折内基线必须与全量基线不同（证明没有用全量样本算基线）
-        const sameAsGlobal = Object.keys(globalBaseline).every(
-          (label) => Math.abs((foldBaseline[label] ?? 0) - (globalBaseline[label] ?? 0)) < 1e-12,
-        );
-        if (sameAsGlobal) problems.push(`${key} 与全量基线相同，未体现折内计算`);
       }
-      details.push(`fold ${fold}: 训练样本 ${trainSamples.length}`);
+      const count = samples.length || 1;
+      const means: Record<string, number> = {};
+      for (const label of Object.keys(sums)) means[label] = (sums[label] ?? 0) / count;
+      return means;
+    };
+    const sameDistribution = (left: Record<string, number>, right: Record<string, number>): boolean => {
+      const labels = new Set([...Object.keys(left), ...Object.keys(right)]);
+      return [...labels].every(
+        (label) => Math.abs((left[label] ?? 0) - (right[label] ?? 0)) < 1e-12,
+      );
+    };
+
+    if (!input.foldBaselines || Object.keys(input.foldBaselines).length === 0) {
+      problems.push('未提供 ablation 实际使用的折内基线，无法独立复算（fail-closed）');
+    } else {
+      // 全量基线逐维度计算（旧实现固定按「预测性别」算、却对六个维度比较——
+      // 其余五维成了跨维度比较、必然「不同」，断言恒真）。
+      const globalByDimension = new Map<string, Record<string, number>>();
+      for (const dimension of V06_TARGET_DIMENSIONS) {
+        globalByDimension.set(dimension, meanDistribution(dataset.samples, dimension));
+      }
+      for (let fold = 0; fold < folds.folds.length; fold += 1) {
+        const testSkus = folds.folds[fold] ?? [];
+        const trainSamples = dataset.samples.filter((sample) => !testSkus.includes(sample.sku));
+        if (trainSamples.length === 0) {
+          problems.push(`第 ${fold} 折训练样本为空`);
+          continue;
+        }
+        for (const dimension of V06_TARGET_DIMENSIONS) {
+          const recomputed = meanDistribution(trainSamples, dimension);
+          const key = `fold:${fold}:${dimension}`;
+          const provided = input.foldBaselines[key];
+          if (!provided) {
+            problems.push(`${key} 缺少 ablation 实际使用的基线`);
+            continue;
+          }
+          if (!sameDistribution(recomputed, provided)) {
+            problems.push(`${key} 与独立复算结果不一致（ablation 基线可疑）`);
+          }
+          const globalBaseline = globalByDimension.get(dimension)!;
+          if (sameDistribution(recomputed, globalBaseline)) {
+            problems.push(`${key} 与本维度全量基线相同，未体现折内计算`);
+          }
+        }
+        details.push(`fold ${fold}: 训练样本 ${trainSamples.length}`);
+      }
     }
     checks.push({
       id: 'V12',

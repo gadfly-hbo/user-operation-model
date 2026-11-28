@@ -16,5 +16,6 @@ export * from './pipeline/v06/03-run-ablation.js';
 export * from './pipeline/v06/04-select-final.js';
 export * from './pipeline/v06/05-evaluate.js';
 export * from './pipeline/v06/06-validate.js';
+export * from './pipeline/v06/frozen-inputs.js';
 export * from './export/model-package.js';
 export * from './export/predict-template.js';

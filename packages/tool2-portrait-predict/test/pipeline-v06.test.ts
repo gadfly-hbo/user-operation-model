@@ -16,14 +16,17 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   V06_FORBIDDEN_FIELDS,
+  V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES,
   V06_TARGET_DIMENSIONS,
+  assertV06ProductAttributeAllowed,
   type V06CompliantProductInput,
   type V06Sample,
 } from '../src/pipeline/v06/lib/types.js';
@@ -58,7 +61,14 @@ import {
   v06CoefficientRegion,
 } from '../src/pipeline/v06/04-select-final.js';
 import { buildV06BaselineComparison, evaluateV06 } from '../src/pipeline/v06/05-evaluate.js';
-import { validateV06 } from '../src/pipeline/v06/06-validate.js';
+import { validateV06, type V06ValidateInput } from '../src/pipeline/v06/06-validate.js';
+import {
+  EXPECTED_COEFFICIENT_SHA256,
+  FROZEN_FOLDS_SHA256,
+  assertFrozenCoefficientSha256,
+  assertFrozenFoldsSha256,
+} from '../src/pipeline/v06/frozen-inputs.js';
+import type { V06ModelArtifact } from '../src/pipeline/v06/04-select-final.js';
 import { jsSimilarity } from '@uom/core/model/metrics';
 
 // ---------------------------------------------------------------------------
@@ -102,10 +112,13 @@ function syntheticSample(index: number): V06Sample {
     specialFunctionMaterial: index % 3 === 0 ? '防护' : '',
   };
   const maleShare = 0.1 + 0.05 * (index % 7);
+  // 取值随 index%7 变化：若按 index%5 取周期值，5 折恰好成对移除同残差样本，
+  // 会出现「折内均值 == 全量均值」的巧合等值，令 V12 的折内性断言误报。
+  const otherShare = 0.3 + 0.02 * (index % 7);
   const portraits = {} as V06Sample['portraits'];
   for (const dimension of V06_TARGET_DIMENSIONS) {
     const [first, second] = DIM_LABELS[dimension]!;
-    const share = dimension === '预测性别' ? maleShare : 0.3 + 0.02 * (index % 5);
+    const share = dimension === '预测性别' ? maleShare : otherShare;
     portraits[dimension] = { [first]: share, [second]: 1 - share };
   }
   return { sku: input.sku, input, portraits };
@@ -137,6 +150,33 @@ function stripComments(source: string): string {
 
 function stripStringLiterals(source: string): string {
   return source.replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""');
+}
+
+/**
+ * 人工字段的**访问形态**黑名单（复核修单 B4）：
+ * 在「剥注释、保留字符串字面量」的源码上匹配——方括号／模板键／`in` 检查这些形态
+ * 一旦先剥字符串就会失效（旧守卫正是因此被 `['fab']` 方括号变异绕过）。
+ */
+function forbiddenAccessPatterns(field: string): RegExp[] {
+  return [
+    new RegExp(`\\[\\s*['"\`]${field}['"\`]\\s*\\]`), // ['fab'] / ["fab"] / [`fab`]
+    new RegExp(`['"\`]${field}['"\`]\\s+in\\b`), // 'fab' in input
+  ];
+}
+
+/** 断言抽取器源码不存在任何人工字段访问形态（点号在剥字符串后查，其余形态在保留字符串时查）。 */
+function assertNoForbiddenFieldAccess(source: string, label: string): void {
+  const withStrings = stripComments(source);
+  const bare = stripStringLiterals(withStrings);
+  for (const forbidden of V06_FORBIDDEN_FIELDS) {
+    for (const pattern of forbiddenAccessPatterns(forbidden)) {
+      assert.ok(
+        !pattern.test(withStrings),
+        `${label} 不得以方括号／模板键／in 形态访问人工字段 ${forbidden}`,
+      );
+    }
+    assert.ok(!new RegExp(`\\.\\s*${forbidden}\\b`).test(bare), `${label} 不得访问人工字段 ${forbidden}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +239,36 @@ describe('v0.6 合规特征抽取', () => {
     assert.equal(projected.sku, 'S001');
   });
 
-  test('行为层：注入人工字段不改变特征', () => {
+  test('行为层：绕过投影层直接喂抽取器——只差人工字段（有／无）的特征完全一致', () => {
+    // 复核修单 B4：旧用例的 clean/dirty 都先过投影层，人工字段到不了抽取器，
+    // 「存在即加特征」型变异（有 fab 就多一个特征）因此存活。这里绕过投影层，
+    // 直接把带／不带 `fab` 的原始输入喂给抽取器：任何「读 fab」的变异都会让两边不同。
+    const groups = new Set(V06_COMPLIANT_GROUPS);
+    const clean: V06CompliantProductInput = {
+      sku: 'S001',
+      fit: '宽松型',
+      fabric: '牛仔',
+      category: '外套',
+      subcategory: '棉外套',
+      season: 'Q4',
+      productAttribute: '老品',
+      ipCollab: '',
+      specialFunctionMaterial: '防护',
+    };
+    const withFab = {
+      ...clean,
+      fab: '一段人工卖点文本',
+      mindProduct: '心智产品',
+      memoryPoint: '记忆点',
+      groupTag: '群组打标',
+      genderCorrected: '男',
+    } as unknown as V06CompliantProductInput;
+    const withOtherFab = { ...withFab, fab: '另一段完全不同的人工卖点' } as unknown as V06CompliantProductInput;
+    assert.deepEqual([...extractV06Tokens(withFab, groups)], [...extractV06Tokens(clean, groups)]);
+    assert.deepEqual([...extractV06Tokens(withOtherFab, groups)], [...extractV06Tokens(clean, groups)]);
+  });
+
+  test('行为层（投影层复核）：投影后注入人工字段同样不改变特征', () => {
     const groups = new Set(V06_COMPLIANT_GROUPS);
     const clean = projectV06CompliantInput({ sku: 'S001', fit: '宽松型', fabric: '牛仔' });
     const dirty = projectV06CompliantInput({
@@ -215,12 +284,67 @@ describe('v0.6 合规特征抽取', () => {
     assert.deepEqual([...extractV06Tokens(dirty, groups)], [...extractV06Tokens(clean, groups)]);
   });
 
-  test('结构守卫：抽取器源码不访问任何人工字段', () => {
-    const source = stripStringLiterals(stripComments(readPipelineSource('lib/features-v06.ts')));
-    for (const forbidden of V06_FORBIDDEN_FIELDS) {
-      // 用词边界匹配属性访问（`.fabric` 不应被 `.fab` 误伤）
-      const pattern = new RegExp(`\\.${forbidden}\\b`);
-      assert.ok(!pattern.test(source), `抽取器源码不得访问人工字段 ${forbidden}`);
+  test('结构守卫：抽取器源码不得以任何访问形态读取人工字段（点号／方括号／模板键／in）', () => {
+    assertNoForbiddenFieldAccess(readPipelineSource('lib/features-v06.ts'), '抽取器');
+  });
+
+  test('特征名白名单：所有产出特征名必须可归属到白名单特征组（无法归属即失败）', () => {
+    // 复核修单 B4：像 V7 对标签做的那样做数据驱动归属——每个产出特征名都必须能由
+    // 白名单字段的语料取值（或面料归一化类别）解释；`fab_present` 之类无法归属的
+    // 特征名一律失败。
+    const groups = new Set(V06_COMPLIANT_GROUPS);
+    const corpus: V06CompliantProductInput[] = [
+      {
+        sku: 'W1',
+        fit: '修身型',
+        fabric: '棉',
+        category: '上衣',
+        subcategory: 'T恤',
+        season: 'Q2',
+        productAttribute: '电商一年期',
+        ipCollab: '',
+        specialFunctionMaterial: '凉感-抗菌',
+      },
+      {
+        sku: 'W2',
+        fit: '宽松型',
+        fabric: '牛仔',
+        category: '外套',
+        subcategory: '棉外套',
+        season: 'Q4',
+        productAttribute: '老品',
+        ipCollab: '联名A',
+        specialFunctionMaterial: '三防',
+      },
+      { sku: 'W3', fit: '合体型', fabric: '无法归类的面料', category: '裙装', subcategory: '', season: '', productAttribute: '线下一年期', ipCollab: '', specialFunctionMaterial: '' },
+      { sku: 'W4', fit: '宽松型', fabric: '', category: '外套', subcategory: '棉外套', season: 'Q4', productAttribute: '老品', ipCollab: '', specialFunctionMaterial: '防护' },
+    ];
+    const separator = /[-+/、，,;；\s]+/;
+    const allowed = new Set<string>();
+    for (const input of corpus) {
+      allowed.add(`fit_${input.fit}`);
+      const fabricClass = normalizeV06Fabric(input.fabric);
+      if (fabricClass !== 'unknown') allowed.add(`fabric_${fabricClass}`);
+      if (input.category) allowed.add(`cat_${input.category}`);
+      if (input.subcategory) allowed.add(`subcat_${input.subcategory}`);
+      if (input.season) allowed.add(`season_${input.season}`);
+      if (input.productAttribute) allowed.add(`attr_${input.productAttribute}`);
+      if (input.ipCollab) allowed.add(`ip_${input.ipCollab}`);
+      for (const token of input.specialFunctionMaterial.split(separator)) {
+        if (token.trim()) allowed.add(`craft_${token.trim()}`);
+      }
+    }
+    const produced = new Set<string>();
+    for (const input of corpus) {
+      for (const name of extractV06Tokens(input, groups).keys()) produced.add(name);
+    }
+    assert.ok(produced.size > 0);
+    // 语料本身要覆盖多个组，避免归属断言变成空洞放行
+    for (const prefix of ['fit_', 'fabric_', 'attr_', 'cat_', 'craft_']) {
+      assert.ok([...produced].some((name) => name.startsWith(prefix)), `语料应覆盖 ${prefix} 组`);
+    }
+    for (const name of produced) {
+      assert.ok(allowed.has(name), `特征名 ${name} 无法归属到任何白名单特征组`);
     }
   });
 
@@ -242,6 +366,94 @@ describe('v0.6 合规特征抽取', () => {
     for (const row of matrix) {
       assert.equal(row.length, featureNames.length);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 冻结输入哈希（复核修单 B2／S2）
+// ---------------------------------------------------------------------------
+
+describe('冻结输入哈希钉死（B2／S2）', () => {
+  test('钉死常量与文档冻结值逐位一致（docs/match-model-baseline.md §7.4）', () => {
+    assert.equal(FROZEN_FOLDS_SHA256, '2ca273cb2a2b14dff9d2ae857e170aa02db89c0f50e36ced84f2625f4087ad22');
+    assert.equal(EXPECTED_COEFFICIENT_SHA256, '79669a0f30938c0b837589998adc4270d093050bd4c980400e76ee357568d6fa');
+  });
+
+  test('folds 被篡改一字节后重算的哈希必不等于钉死值，断言即抛错', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'uom-v06-tamper-'));
+    const path = join(dir, 'folds.json');
+    writeFileSync(path, '{"k":5,"folds":[["S1","S2"],["S3","S4"]]}', 'utf8');
+    const before = createHash('sha256').update(readFileSync(path)).digest('hex');
+    writeFileSync(path, '{"k":5,"folds":[["S1","S2"],["S3","S5"]]}', 'utf8'); // 篡改一个字节
+    const after = createHash('sha256').update(readFileSync(path)).digest('hex');
+    assert.notEqual(before, after, '一字节篡改必须改变 sha256');
+    assert.notEqual(after, FROZEN_FOLDS_SHA256);
+    assert.throws(() => assertFrozenFoldsSha256(after), /冻结 folds/);
+    assert.doesNotThrow(() => assertFrozenFoldsSha256(FROZEN_FOLDS_SHA256));
+    assert.throws(() => assertFrozenFoldsSha256(undefined), /冻结 folds|未提供/);
+  });
+
+  test('系数区哈希不一致即抛错（换求解器／换数据场景），一致才放行', () => {
+    assert.throws(() => assertFrozenCoefficientSha256('f'.repeat(64)), /系数区/);
+    assert.throws(() => assertFrozenCoefficientSha256(undefined), /系数区|未提供/);
+    assert.doesNotThrow(() => assertFrozenCoefficientSha256(EXPECTED_COEFFICIENT_SHA256));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 货品属性取值集合（复核修单 S1，2026-11-28 用户追认）
+// ---------------------------------------------------------------------------
+
+describe('货品属性取值集合（S1）', () => {
+  test('合法取值就是三种生命周期类标签（用户裁定追认为客观属性）', () => {
+    assert.deepEqual([...V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES].sort(), ['电商一年期', '线下一年期', '老品']);
+  });
+
+  test('三种合法值放行；集合外的任何值（含空值与人工判断文本）一律抛错', () => {
+    for (const value of V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES) {
+      assert.doesNotThrow(() => assertV06ProductAttributeAllowed(value));
+    }
+    assert.throws(() => assertV06ProductAttributeAllowed('运营人工判断的新值'), /货品属性/);
+    assert.throws(() => assertV06ProductAttributeAllowed('老品 '), /货品属性|trim/);
+    assert.throws(() => assertV06ProductAttributeAllowed(''), /货品属性/);
+  });
+
+  test('阶段 01 fail-closed：货品属性出现集合外的值即拒绝整个数据集', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'uom-v06-attr-'));
+    const portraitDir = join(dir, 'raw-portraits');
+    mkdirSync(portraitDir, { recursive: true });
+    const header = ['| 标签类型 | 标签 | 占比 |', '|---|---|---|'];
+    const rows = V06_TARGET_DIMENSIONS.flatMap((dimension) => {
+      const [first, second] = DIM_LABELS[dimension]!;
+      return [`| ${dimension} | ${first} | 60% |`, `| ${dimension} | ${second} | 40% |`];
+    });
+    writeFileSync(join(portraitDir, 'S901_正.md'), [...header, ...rows, ''].join('\n'), 'utf8');
+
+    const columns = ['款号', '版型', '面料', '品类', '小类', '季节', '货品属性', 'IP/联名', '特殊功能/材质'];
+    const record = ['S901', '修身型', '棉', '上衣', 'T恤', 'Q4', '', '', ''];
+    const ExcelJS = (await import('exceljs')).default;
+    const writeXlsx = async (productAttribute: string): Promise<string> => {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('商品');
+      sheet.addRow(columns);
+      sheet.addRow([...record.slice(0, 6), productAttribute, '', '']);
+      const path = join(dir, `product-info-${productAttribute.length || 0}.xlsx`);
+      await workbook.xlsx.writeFile(path);
+      return path;
+    };
+
+    // 合法取值 → prepare 放行
+    const goodPath = await writeXlsx('老品');
+    const dataset = await prepareV06Dataset({ portraitDir, productInfoXlsx: goodPath });
+    assert.equal(dataset.samples.length, 1);
+    assert.equal(dataset.samples[0]!.input.productAttribute, '老品');
+
+    // 集合外取值 → 整个数据集被拒绝（fail-closed）
+    const badPath = await writeXlsx('运营临时打的标签');
+    await assert.rejects(
+      () => prepareV06Dataset({ portraitDir, productInfoXlsx: badPath }),
+      /货品属性/,
+    );
   });
 });
 
@@ -419,6 +631,28 @@ describe('阶段 03 run-ablation', () => {
     const expectedJs = jsSimilarity(foldBaseline, actual.portraits['预测性别']!);
     assert.ok(Math.abs(row.baseJs - expectedJs) < 1e-12, '折内基线必须只用训练折样本');
   });
+
+  test('消融结果返回它**实际使用**的逐折基线（V12 独立比对的输入，复核修单 B3）', () => {
+    const samples = syntheticSamples(10);
+    const folds = syntheticFolds(samples, 5);
+    const result = runV06Ablation(samples, folds, V06_ABLATION_LADDER.slice(0, 1))[0]!;
+    assert.ok(result.foldBaselines, '消融结果必须携带它实际使用的折内基线');
+    for (let fold = 0; fold < folds.length; fold += 1) {
+      const train = samples.filter((sample) => !folds[fold]!.includes(sample.sku));
+      for (const dimension of V06_TARGET_DIMENSIONS) {
+        const key = `fold:${fold}:${dimension}`;
+        const provided = result.foldBaselines[key];
+        assert.ok(provided, `缺少 ${key} 的基线`);
+        const expected = v06AccountMeanBaseline(dimension, train);
+        for (const [label, value] of Object.entries(expected)) {
+          assert.ok(
+            Math.abs((provided[label] ?? 0) - value) < 1e-12,
+            `${key}/${label} 与折内均值不一致`,
+          );
+        }
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -477,6 +711,7 @@ describe('阶段 04 select-final', () => {
       foldStability: {},
       featureCounts: {},
       rows: [],
+      foldBaselines: {},
     };
   }
 
@@ -577,8 +812,8 @@ describe('阶段 05 evaluate', () => {
 // ---------------------------------------------------------------------------
 
 describe('阶段 06 validate', () => {
-  function buildValidationInput() {
-    const samples = syntheticSamples(10);
+  function buildValidationInput(customSamples?: V06Sample[]) {
+    const samples = customSamples ?? syntheticSamples(10);
     const folds = syntheticFolds(samples, 5);
     const ablation = runV06Ablation(samples, folds, V06_ABLATION_LADDER.slice(0, 2));
     const selection = selectV06FinalConfig(ablation);
@@ -604,9 +839,21 @@ describe('阶段 06 validate', () => {
     return { samples, folds, ablation, selection, artifact, metrics };
   }
 
-  test('校验项覆盖 V1–V12，V9 与 V12 在列', () => {
-    const input = buildValidationInput();
-    const checks = validateV06({
+  /** 校验清单 fixture：临时目录里一个文件 + 对应 checksums.sha256（V1 全 pass 需要）。 */
+  function makeChecksumsFile(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'uom-v06-v1-'));
+    const payload = join(dir, 'synthetic-payload.txt');
+    writeFileSync(payload, 'synthetic', 'utf8');
+    const sha = createHash('sha256').update(readFileSync(payload)).digest('hex');
+    const listPath = join(dir, 'checksums.sha256');
+    writeFileSync(listPath, `${sha}  synthetic-payload.txt\n`, 'utf8');
+    return listPath;
+  }
+
+  function toValidateInput(
+    input: ReturnType<typeof buildValidationInput>,
+  ): Omit<V06ValidateInput, 'checksumsFile' | 'frozenFoldsSha256' | 'actualFoldsSha256' | 'foldBaselines'> {
+    return {
       dataset: {
         schemaVersion: 1,
         experiment: 'test',
@@ -633,41 +880,76 @@ describe('阶段 06 validate', () => {
       artifact: input.artifact,
       metrics: input.metrics,
       rerunFinalTraining: () => trainV06FinalModel(input.samples, input.selection.winner),
-    });
+    };
+  }
+
+  function makeChecks(
+    input: ReturnType<typeof buildValidationInput>,
+    overrides: Partial<V06ValidateInput> = {},
+  ) {
+    return validateV06({ ...toValidateInput(input), ...overrides });
+  }
+
+  /** 正常管线的完整输入：ablation 实际基线 + 钉死哈希 + 校验清单。 */
+  function fullPassOverrides(input: ReturnType<typeof buildValidationInput>): Partial<V06ValidateInput> {
+    return {
+      checksumsFile: makeChecksumsFile(),
+      frozenFoldsSha256: FROZEN_FOLDS_SHA256,
+      actualFoldsSha256: FROZEN_FOLDS_SHA256,
+      foldBaselines: input.ablation[0]!.foldBaselines,
+    };
+  }
+
+  test('校验项覆盖 V1–V12（V9／V12 在列）且完整输入下全部 pass', () => {
+    const input = buildValidationInput();
+    const checks = makeChecks(input, fullPassOverrides(input));
     const ids = checks.map((check) => check.id);
-    assert.ok(ids.includes('V9'));
-    assert.ok(ids.includes('V12'));
-    assert.ok(checks.some((check) => check.result === 'pass'));
+    for (let index = 1; index <= 12; index += 1) {
+      assert.ok(ids.includes(`V${index}`), `缺少校验项 V${index}`);
+    }
+    const failed = checks.filter((check) => check.result !== 'pass');
+    assert.deepEqual(
+      failed.map((check) => [check.id, check.detail]),
+      [],
+      `完整输入下应全 pass，失败项：${failed.map((check) => check.id).join(',')}`,
+    );
+  });
+
+  test('V1：未提供 intake 校验清单即 fail（fail-closed，不再默认 pass）', () => {
+    const input = buildValidationInput();
+    const checks = makeChecks(input, {});
+    assert.equal(checks.find((check) => check.id === 'V1')?.result, 'fail');
+  });
+
+  test('V4：冻结 folds 哈希与运行时哈希不一致即 fail（folds 被重生成场景）', () => {
+    const input = buildValidationInput();
+    const checks = makeChecks(input, {
+      ...fullPassOverrides(input),
+      actualFoldsSha256: 'a'.repeat(64),
+    });
+    assert.equal(checks.find((check) => check.id === 'V4')?.result, 'fail');
+  });
+
+  test('V4：缺任一哈希即 fail（fail-closed，不再默认 pass）', () => {
+    const input = buildValidationInput();
+    const missingFrozen = makeChecks(input, {
+      checksumsFile: makeChecksumsFile(),
+      actualFoldsSha256: FROZEN_FOLDS_SHA256,
+      foldBaselines: input.ablation[0]!.foldBaselines,
+    });
+    assert.equal(missingFrozen.find((check) => check.id === 'V4')?.result, 'fail');
+    const missingActual = makeChecks(input, {
+      checksumsFile: makeChecksumsFile(),
+      frozenFoldsSha256: FROZEN_FOLDS_SHA256,
+      foldBaselines: input.ablation[0]!.foldBaselines,
+    });
+    assert.equal(missingActual.find((check) => check.id === 'V4')?.result, 'fail');
   });
 
   test('V9：重跑结果不一致即 fail', () => {
     const input = buildValidationInput();
-    const checks = validateV06({
-      dataset: {
-        schemaVersion: 1,
-        experiment: 'test',
-        targetDimensions: V06_TARGET_DIMENSIONS,
-        samples: input.samples,
-        intake: {
-          portraitFileCount: 0,
-          positivePortraitCount: 0,
-          productInfoSha256: '',
-          checksumEntries: 0,
-          checksumMismatches: 0,
-        },
-      },
-      folds: {
-        schemaVersion: 1,
-        method: 'deterministic_stratified_5_fold',
-        stratifyKey: 'categoryGroup x genderCorrected',
-        seed: 20260911,
-        k: 5,
-        foldSizes: input.folds.map((fold) => fold.length),
-        folds: input.folds,
-      },
-      selection: input.selection,
-      artifact: input.artifact,
-      metrics: input.metrics,
+    const checks = makeChecks(input, {
+      ...fullPassOverrides(input),
       rerunFinalTraining: () => {
         const tampered = trainV06FinalModel(input.samples, input.selection.winner);
         tampered.coefficients.dimensionModels[0]!.alpha = 999;
@@ -675,6 +957,112 @@ describe('阶段 06 validate', () => {
       },
     });
     assert.equal(checks.find((check) => check.id === 'V9')?.result, 'fail');
+  });
+
+  test('V10：最终词表缺折内 OOF 词项即 fail（真实判定，不再恒 PASS）', () => {
+    const input = buildValidationInput();
+    const featureNames = input.artifact.coefficients.dimensionModels[0]!.featureNames;
+    assert.ok(featureNames.length > 1, '夹具词表应非平凡');
+    input.artifact.coefficients.dimensionModels[0]!.featureNames = featureNames.slice(1);
+    const checks = makeChecks(input, fullPassOverrides(input));
+    assert.equal(checks.find((check) => check.id === 'V10')?.result, 'fail');
+  });
+
+  test('V12：未提供 ablation 折内基线即 fail（fail-closed）', () => {
+    const input = buildValidationInput();
+    const checks = makeChecks(input, { checksumsFile: makeChecksumsFile(), frozenFoldsSha256: FROZEN_FOLDS_SHA256, actualFoldsSha256: FROZEN_FOLDS_SHA256 });
+    assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
+  });
+
+  test('V12：ablation 基线泄漏为全量基线即 fail', () => {
+    const input = buildValidationInput();
+    const leaked: Record<string, Record<string, number>> = {};
+    for (let fold = 0; fold < input.folds.length; fold += 1) {
+      for (const dimension of V06_TARGET_DIMENSIONS) {
+        leaked[`fold:${fold}:${dimension}`] = v06AccountMeanBaseline(dimension, input.samples);
+      }
+    }
+    const checks = makeChecks(input, { ...fullPassOverrides(input), foldBaselines: leaked });
+    assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
+  });
+
+  test('V12：任一维度基线被偏移即 fail（逐维度逐标签比对）', () => {
+    const input = buildValidationInput();
+    const baselines: Record<string, Record<string, number>> = {
+      ...(input.ablation[0]!.foldBaselines ?? {}),
+    };
+    const key = 'fold:0:预测性别';
+    const shifted = { ...(baselines[key] ?? {}) };
+    const firstLabel = Object.keys(shifted)[0]!;
+    shifted[firstLabel] = (shifted[firstLabel] ?? 0) + 0.05;
+    baselines[key] = shifted;
+    const checks = makeChecks(input, { ...fullPassOverrides(input), foldBaselines: baselines });
+    assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
+  });
+
+  test('V12：「≠全量基线」按各自维度比对——画像恒定的维度与其自身全量基线相同必须被抓', () => {
+    // 复核修单 B3 回归：旧实现把全量基线固定按「预测性别」计算，却对六个维度都比较——
+    // 其余五维是跨维度比较、必然「不同」，断言恒真。构造一个画像恒定的维度
+    // （折内均值 == 自身全量均值）：旧实现下 V12 仍 pass（跨维度比较放行），修复后 fail。
+    const samples: V06Sample[] = Array.from({ length: 10 }, (_, index) => {
+      const base = syntheticSample(index);
+      const portraits = { ...base.portraits };
+      portraits['预测年龄'] = { '[18,24]': 0.4, '[25,29]': 0.6 };
+      return { ...base, portraits };
+    }).sort((left, right) => (left.sku < right.sku ? -1 : left.sku > right.sku ? 1 : 0));
+    const input = buildValidationInput(samples);
+    const checks = makeChecks(input, fullPassOverrides(input));
+    assert.equal(checks.find((check) => check.id === 'V12')?.result, 'fail');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 包级结构守卫（复核建议项 S6：单一求解器／单一指标；B2 管线脚本接线）
+// ---------------------------------------------------------------------------
+
+describe('tool2 包级结构守卫', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  function listSourceFiles(root: string): string[] {
+    return readdirSync(root, { recursive: true })
+      .map((entry) => String(entry))
+      .filter((entry) => entry.endsWith('.ts'))
+      .map((entry) => resolve(root, entry));
+  }
+
+  test('包内不出现第二份 Ridge／指标实现；core 能力只经 @uom/core/model|normalize 子路径引用', () => {
+    const files = listSourceFiles(resolve(here, '../../src'));
+    assert.ok(files.length >= 10, `应扫描到 tool2 源码文件，实际 ${files.length}`);
+    const banned =
+      /invertMatrix|gaussJordan|adjugate|cofactor|Math\.log2|function\s+(?:cosineSimilarity|jsSimilarity|fitRidge|predictRidge|choleskyFactor|solveCholesky)/i;
+    for (const file of files) {
+      const code = stripComments(readFileSync(file, 'utf8'));
+      assert.ok(!banned.test(code), `${file} 疑似内嵌第二份求解器／指标实现`);
+      for (const match of code.matchAll(/from\s+['"](@uom\/core\/[^'"]+)['"]/g)) {
+        assert.ok(
+          /^@uom\/core\/(model|normalize)\//.test(match[1]!),
+          `core 能力只允许经 @uom/core/model|normalize 子路径引用：${match[1]}`,
+        );
+      }
+    }
+  });
+
+  test('结构守卫：管线脚本 V4 用钉死常量、不做运行时自比较（B2）；基线来自 ablation 实际值（B3）；系数区有钉死校验（S2）', () => {
+    const source = stripComments(readFileSync(resolve(here, '../../../../scripts/v06-pipeline.mjs'), 'utf8'));
+    assert.ok(
+      source.includes('frozenFoldsSha256: pipeline.FROZEN_FOLDS_SHA256'),
+      'V4 冻结值必须用钉死常量（不得用运行时哈希自比较）',
+    );
+    assert.ok(
+      !source.includes('frozenFoldsSha256: foldsSha256'),
+      'V4 不得把同一运行时哈希同时当冻结值与实际值（自比较恒 PASS）',
+    );
+    assert.ok(source.includes('assertFrozenFoldsSha256'), '管线必须在阶段 02 后做 folds 钉死校验（B2）');
+    assert.ok(source.includes('assertFrozenCoefficientSha256'), '管线必须在阶段 04 后做系数区钉死校验（S2）');
+    assert.ok(
+      source.includes('ablation[0]?.foldBaselines'),
+      'V12 必须比对 ablation 实际使用的折内基线（B3）',
+    );
   });
 });
 

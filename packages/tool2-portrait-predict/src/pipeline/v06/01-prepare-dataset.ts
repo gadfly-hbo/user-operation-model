@@ -24,7 +24,8 @@
  * - 画像侧与商品信息侧的款号集合不一致（含重复款号）→ 抛错；
  * - 任一样本缺任一目标维度 → 抛错；
  * - 解析出的分布非有限或份额为负 → 抛错；
- * - intake 校验清单（`checksums.sha256`）有任一条不匹配 → 抛错。
+ * - intake 校验清单（`checksums.sha256`）有任一条不匹配 → 抛错；
+ * - 货品属性取值不在 S1 合法集合（三种生命周期类标签）→ 抛错（复核修单 S1，防止人工判断值混入）。
  */
 
 import { createHash } from 'node:crypto';
@@ -38,6 +39,7 @@ import { projectV06CompliantInput } from './lib/features-v06.js';
 import {
   V06_EXPERIMENT_ID,
   V06_TARGET_DIMENSIONS,
+  assertV06ProductAttributeAllowed,
   type V06Sample,
   type V06TargetDimension,
 } from './lib/types.js';
@@ -206,6 +208,10 @@ export async function prepareV06Dataset(paths: V06IntakePaths): Promise<V06Datas
       portraits[dimension as V06TargetDimension] = distribution;
     }
     const product = products.get(sku)!;
+    // 货品属性取值集合校验（复核修单 S1，2026-11-28 用户裁定：该列只允许三种生命周期类
+    // 标签——见 types.ts 的 V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES；集合外取值说明该列
+    // 混入了人工判断内容，fail-closed 拒绝整个数据集，防止 §9.2 边界被数据污染突破）。
+    assertV06ProductAttributeAllowed(product.productAttribute ?? '');
     samples.push({
       sku,
       input: projectV06CompliantInput({

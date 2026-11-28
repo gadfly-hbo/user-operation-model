@@ -21,6 +21,14 @@
  * 缺固化数据 → **明确失败**，不跳过、不静默通过。
  * 本脚本只读本机文件，不访问网络；产物只落 gitignore 区。
  *
+ * 复核修单（2026-11-28，review-p2.md）：
+ * - B2：V4 的冻结值改用 `FROZEN_FOLDS_SHA256` 钉死常量（旧实现把同一运行时哈希同时当
+ *   冻结值与实际值——自比较恒 PASS）；阶段 02 后立即与运行时哈希比对。
+ * - S2：阶段 04 后将系数区 sha256 与钉死期望值 `EXPECTED_COEFFICIENT_SHA256` 比对
+ *   （换求解器／改特征／改数据即失败）。
+ * - B3：V12 比对的基线改为 ablation **实际使用**的折内基线（`runV06Ablation` 返回值）。
+ * - C 项：V10／V12 校验结论更实 → 模型包升版 **v2**（v1 已登记 Staging，保持不动）。
+ *
  * 用法：
  *   node scripts/v06-pipeline.mjs
  *   node scripts/v06-pipeline.mjs --root /path/to/data/archive-modelevol/v06-tmall-25q4
@@ -48,9 +56,9 @@ const FOLDS_RELATIVE = join(
   'folds.json',
 );
 
-/** 产物目录（gitignore 区）。 */
+/** 产物目录（gitignore 区）。复核修单：V10／V12 校验结论变化 → 模型包升版 v2（v1 不动）。 */
 const DEFAULT_OUT_DIR = join(REPO_ROOT, 'models', 'work-v06');
-const DEFAULT_PACKAGE_DIR = join(REPO_ROOT, 'models', 'uom-tool2-portrait-v06', 'v1');
+const DEFAULT_PACKAGE_DIR = join(REPO_ROOT, 'models', 'uom-tool2-portrait-v06', 'v2');
 
 /** 解析命令行参数。 */
 function parseArgs(argv) {
@@ -208,6 +216,8 @@ async function main() {
   }
   const foldsSha256 = createHash('sha256').update(readFileSync(foldsPath)).digest('hex');
   say(`阶段 02 folds · 冻结输入 ${foldsDoc.k} 折（${foldsDoc.foldSizes.join('/')}）· 分层键 ${foldsDoc.stratifyKey} · sha256 ${foldsSha256.slice(0, 16)}…`);
+  // 复核修单 B2：运行时哈希必须与钉死的冻结值一致（folds 被重生成/替换即在此失败）
+  pipeline.assertFrozenFoldsSha256(foldsSha256);
 
   // ---- 阶段 03：ablation ----
   const ablation = pipeline.runV06Ablation(dataset.samples, foldsDoc.folds, pipeline.V06_ABLATION_LADDER);
@@ -231,6 +241,8 @@ async function main() {
   const artifact = pipeline.trainV06FinalModel(dataset.samples, selection.winner);
   const coefficientHash = pipeline.v06CoefficientHash(artifact);
   say(`阶段 04 select · 选中 ${selection.winner.name} · 门槛结论 ${selection.gate} · 系数区 sha256 ${coefficientHash.slice(0, 16)}…`);
+  // 复核修单 S2：系数区哈希与钉死期望值比对（换求解器/改特征/改数据即在此失败）
+  pipeline.assertFrozenCoefficientSha256(coefficientHash);
 
   // ---- 阶段 05：evaluate ----
   const metrics = pipeline.evaluateV06({
@@ -253,17 +265,9 @@ async function main() {
   }
 
   // ---- 阶段 06：validate ----
-  const foldBaselines = {};
-  for (let fold = 0; fold < foldsDoc.folds.length; fold += 1) {
-    const testSkus = foldsDoc.folds[fold];
-    const trainSamples = dataset.samples.filter((s) => !testSkus.includes(s.sku));
-    for (const dimension of pipeline.V06_TARGET_DIMENSIONS) {
-      foldBaselines[`fold:${fold}:${dimension}`] = pipeline.v06AccountMeanBaseline(
-        dimension,
-        trainSamples,
-      );
-    }
-  }
+  // 复核修单 B3：V12 比对的必须是 ablation **实际使用**的折内基线
+  //（旧实现由本脚本用同一函数重算一份传给 V12——自比较恒 PASS，无法发现 ablation 泄漏）。
+  const foldBaselines = ablation[0]?.foldBaselines ?? {};
   const checks = pipeline.validateV06({
     dataset,
     folds: foldsDoc,
@@ -272,7 +276,8 @@ async function main() {
     metrics,
     rerunFinalTraining: () => pipeline.trainV06FinalModel(dataset.samples, selection.winner),
     checksumsFile: join(intakeDir, 'checksums.sha256'),
-    frozenFoldsSha256: foldsSha256,
+    // 复核修单 B2：冻结值用钉死常量，实际值用运行时哈希——不再自比较
+    frozenFoldsSha256: pipeline.FROZEN_FOLDS_SHA256,
     actualFoldsSha256: foldsSha256,
     foldBaselines,
   });
@@ -348,11 +353,11 @@ async function main() {
         acceptance: metrics.acceptance,
         macroJsLift: metrics.macro.jsLift,
         validationChecks: checks,
-        frozenFoldsSha256: foldsSha256,
+        frozenFoldsSha256: pipeline.FROZEN_FOLDS_SHA256,
         coefficientRegionSha256: coefficientHash,
       },
       name: 'uom-tool2-portrait-v06',
-      version: 1,
+      version: 2,
       stage: 'Staging',
       goal: '商品客观属性 → 六维人群画像分布（v0.6 六阶段管线移植，§9.2 合规特征集）',
       splitSeed: foldsDoc.seed,

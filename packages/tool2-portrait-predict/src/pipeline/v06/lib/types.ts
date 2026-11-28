@@ -66,6 +66,31 @@ export const V06_FORBIDDEN_FIELDS: readonly string[] = [
   'genderCorrected',
 ];
 
+/**
+ * 货品属性（`productAttribute`）的合法取值集合（复核修单 S1 锁定）。
+ *
+ * 2026-11-28 用户裁定（独立复核 S1）：该列的实际取值是**三种生命周期类标签**，
+ * 性质同 §9.2 白名单「上新类型」，**追认为客观属性**，保留在合规特征集（`attr` 组）。
+ * 为防止将来混进人工判断值，取值集合在此钉死：出现集合外的任何值（含空值）一律
+ * fail-closed（阶段 01 拒绝整个数据集）。新取值属数据契约变更，须另立变更并更新本集合。
+ */
+export const V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES: readonly string[] = [
+  '电商一年期',
+  '线下一年期',
+  '老品',
+];
+
+/** 校验一个货品属性取值；不在合法集合内（含空值）即抛错（取值以精确匹配为准，调用方负责先 trim）。 */
+export function assertV06ProductAttributeAllowed(value: string): void {
+  if (!V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES.includes(value)) {
+    throw new Error(
+      `FAIL-CLOSED: 货品属性取值「${value}」不在合法集合内` +
+        `（[${V06_PRODUCT_ATTRIBUTE_ALLOWED_VALUES.join('／')}]，2026-11-28 用户裁定 S1：` +
+        `该列只允许三种生命周期类标签）——新取值属数据契约变更，须另立变更并更新集合`,
+    );
+  }
+}
+
 /** 一个训练样本：合规输入 + 六个维度的实际成交人群画像。 */
 export interface V06Sample {
   sku: string;

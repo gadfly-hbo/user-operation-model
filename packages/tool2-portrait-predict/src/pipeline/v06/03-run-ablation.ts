@@ -31,7 +31,7 @@ import {
 } from '@uom/core/model/metrics';
 
 import { predictV06Dimension, trainV06Dimension, v06AccountMeanBaseline } from './lib/train-v06.js';
-import { V06_TARGET_DIMENSIONS, type V06Sample } from './lib/types.js';
+import { V06_TARGET_DIMENSIONS, type V06Distribution, type V06Sample } from './lib/types.js';
 
 /** 一个消融配置。 */
 export interface V06Config {
@@ -116,6 +116,12 @@ export interface V06AblationResult {
   foldStability: Record<string, { mean: number; std: number }>;
   featureCounts: Record<string, number>;
   rows: V06OofRow[];
+  /**
+   * 评估期**实际使用**的逐折账号均值基线（键 `fold:<折号>:<维度>`）。
+   * 复核修单 B3：V12 必须与这份基线独立比对（而不是由管线用同一函数重算一份自比较），
+   * 否则 ablation 泄漏（基线误用全量数据）时管线级校验无从发现。
+   */
+  foldBaselines: Record<string, V06Distribution>;
 }
 
 /** 均值（空集合返回 0，避免 NaN）。 */
@@ -136,6 +142,9 @@ export function runV06Ablation(
     const groups = new Set(config.groups);
     const rows: V06OofRow[] = [];
     const featureCounts: Record<string, number> = {};
+    // 复核修单 B3：记录评估期**实际使用**的逐折基线，供 V12 独立比对
+    //（基线与配置无关，各配置相同，取首配置的即可代表）。
+    const foldBaselines: Record<string, V06Distribution> = {};
 
     for (let fold = 0; fold < folds.length; fold += 1) {
       const testSkus = folds[fold] ?? [];
@@ -150,6 +159,7 @@ export function runV06Ablation(
         featureCounts[dimension] = fit.featureNames.length;
         const predictions = predictV06Dimension(fit, groups, test);
         const baseline = v06AccountMeanBaseline(dimension, train);
+        foldBaselines[`fold:${fold}:${dimension}`] = baseline;
         for (let index = 0; index < test.length; index += 1) {
           const sample = test[index]!;
           const actual = sample.portraits[dimension];
@@ -233,6 +243,6 @@ export function runV06Ablation(
       };
     }
 
-    return { config, perDimension, macro, foldStability, featureCounts, rows };
+    return { config, perDimension, macro, foldStability, featureCounts, rows, foldBaselines };
   });
 }
