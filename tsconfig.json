@@ -9,6 +9,9 @@
     },
     {
       "path": "./packages/tool1-channel-match"
+    },
+    {
+      "path": "./packages/tool2-portrait-predict"
     }
   ]
 }
