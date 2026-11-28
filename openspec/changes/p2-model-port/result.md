@@ -921,8 +921,8 @@ npm test                    # 含黄金用例与字节一致用例（合成夹�
 
 #### 干净检出链接检查（B-1 复验）
 
-- 本轮提交后执行：`git worktree add --detach /tmp/uom-links-check HEAD` → `python3 .github/scripts/check-docs-links.py .` → `git worktree remove --force /tmp/uom-links-check`。
-- 结果：**待本轮提交后填写**（提交前先行占位，提交后以独立小提交回填实测值）。
+- 本轮提交（`fc55ddb`）后执行：`git worktree add --detach /tmp/uom-links-check HEAD` → `python3 .github/scripts/check-docs-links.py .` → `git worktree remove --force /tmp/uom-links-check`（测后已删）。
+- 结果：**PASS**——`检查相对链接 128 条，错误 0，告警 0`，退出码 0（干净检出 = HEAD `fc55ddb`，含两份复核报告与本修单全部改动；B-1 关闭确认）。
 
 #### 复核操作注意
 
