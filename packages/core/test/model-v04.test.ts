@@ -63,8 +63,8 @@ import {
  * - 样本包读取（最小 JSONL reader、CSV 引号处理、目标份额索引对齐 fail-closed）；
  * - §9.2 合规守卫（类型层 + 行为层 + 结构层）。
  *
- * 期望特征向量取自归档 work-package 第 1 行样本（`109326100005`），
- * 由归档 `extractBaseSupervisedFeatures` 独立算出后固化在此。
+ * 所有夹具均为**合成数据**：款号、属性与 FAB 卖点全部虚构，不含任何真实商品记录、
+ * 真实卖点文案或真实画像数值（复核修单 B1 的数据边界要求，见 result.md 复核修单章）。
  */
 
 /** 读取模型模块的 TypeScript 源码，用于结构型变异守卫。 */
@@ -81,6 +81,33 @@ function stripComments(source: string): string {
 /** 去掉字符串字面量（避免黑名单常量里的字段名误伤结构守卫）。 */
 function stripStringLiterals(source: string): string {
   return source.replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""');
+}
+
+/**
+ * 人工字段的**访问形态**黑名单（复核修单 B4）：
+ * 在「剥注释、保留字符串字面量」的源码上匹配——方括号／模板键／`in` 检查这些形态
+ * 一旦先剥字符串就会失效（旧守卫的方括号检查因此形同虚设）。
+ */
+function forbiddenAccessPatterns(field: string): RegExp[] {
+  return [
+    new RegExp(`\\[\\s*['"\`]${field}['"\`]\\s*\\]`), // ['fab'] / ["fab"] / [`fab`]
+    new RegExp(`['"\`]${field}['"\`]\\s+in\\b`), // 'fab' in input
+  ];
+}
+
+/** 断言抽取器源码不存在任何人工字段访问形态（点号在剥字符串后查，其余形态在保留字符串时查）。 */
+function assertNoForbiddenFieldAccess(source: string, label: string): void {
+  const withStrings = stripComments(source);
+  const bare = stripStringLiterals(withStrings);
+  for (const forbidden of COMPLIANT_FORBIDDEN_FIELDS) {
+    for (const pattern of forbiddenAccessPatterns(forbidden)) {
+      assert.ok(
+        !pattern.test(withStrings),
+        `${label} 不得以方括号／模板键／in 形态访问人工字段 ${forbidden}`,
+      );
+    }
+    assert.ok(!new RegExp(`\\.\\s*${forbidden}\\b`).test(bare), `${label} 不得访问人工字段 ${forbidden}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -170,27 +197,31 @@ describe('v0.4 特征抽取：词典外置 + 基础特征', () => {
     assert.deepEqual(mergeCounts({ a: 1, b: 2 }, { b: 3, c: 4 }), { a: 1, b: 5, c: 4 });
   });
 
-  test('work-package 第 1 行样本的基础特征向量与归档一致（手算期望）', () => {
-    // 归档 work-package/train/product_attributes.jsonl 第 1 行：109326100005
+  test('合成样本的基础特征向量与手算期望一致（词典命中逐项可核）', () => {
+    // 合成样本：版型／面料／卖点均为虚构。期望向量按词典逐项手算：
+    // - 「修身型」→ fit_slim（slim 组首词「修身」命中）；
+    // - 面料「棉氨纶混纺罗纹」→ fabric_cotton / fabric_spandex / fabric_blend / fabric_rib 各 1；
+    // - 卖点「休闲慵懒显高级，设计感剪裁，垂坠面料，日常百搭」→
+    //   休闲+慵懒 → style_casual 2；高级 → style_premium 1；设计感+剪裁 → style_designer 2；
+    //   百搭 → style_versatile 1；垂坠 → func_drape 1；日常 → scene_daily 1；
+    //   卖点里不含任何面料词典词（「面料」不是词典条目）。
     const sample: V04OriginalProductInput = {
-      skuId: '109326100005',
-      sourceProductKey: '109326100005',
+      skuId: 'SYN-0001',
+      sourceProductKey: 'SYN-0001',
       fitType: '修身型',
-      fabric: '混交+氨纶',
-      fab:
-        '1.荡领短袖T恤\r\n2.薄感粘棉腈弹1X1罗纹\r\n3.自然垂坠褶皱，修饰颈线，轻松穿出慵懒高级感，' +
-        '日常搭配更显品味，下摆插片分割，巧妙藏肉不臃肿，多种身材都能穿出松弛显瘦的时髦效果。',
+      fabric: '棉氨纶混纺罗纹',
+      fab: '休闲慵懒显高级，设计感剪裁，垂坠面料，日常百搭',
     };
     assert.deepEqual(extractBaseSupervisedFeatures(sample), {
       fit_slim: 1,
+      fabric_cotton: 1,
       fabric_spandex: 1,
       fabric_blend: 1,
-      fabric_cotton: 1,
       fabric_rib: 1,
       style_casual: 2,
-      style_slimming: 1,
       style_premium: 1,
-      style_designer: 1,
+      style_designer: 2,
+      style_versatile: 1,
       func_drape: 1,
       scene_daily: 1,
     });
@@ -434,7 +465,28 @@ describe('样本包读取', () => {
 });
 
 describe('§9.2 背对背隔离：合规特征集守卫', () => {
-  test('行为层：输入里的 fab 变化不影响合规特征（把 fab 接回抽取器则失败）', () => {
+  test('行为层：绕过投影层直接喂抽取器——只差 fab（有／无）的特征完全一致', () => {
+    // 复核修单 B4：旧用例只比较「两段都非空的 fab」，杀不死「fab 存在即加特征」型变异。
+    // 这里绕过投影层，直接把带／不带 fab 的原始输入喂给抽取器。
+    const clean: V04CompliantProductInput = {
+      skuId: 'C1',
+      fitType: '修身型',
+      fabric: '全棉',
+      category: '短袖T恤',
+    };
+    const withFab = {
+      ...clean,
+      fab: '一段人工卖点文本',
+      mentalProduct: '心智产品',
+      memoryPoint: '记忆点',
+      groupTag: '群组打标',
+    } as V04CompliantProductInput;
+    const withOtherFab = { ...withFab, fab: '另一段完全不同的人工卖点' } as V04CompliantProductInput;
+    assert.deepEqual(extractCompliantBaseFeatures(withFab), extractCompliantBaseFeatures(clean));
+    assert.deepEqual(extractCompliantBaseFeatures(withOtherFab), extractCompliantBaseFeatures(clean));
+  });
+
+  test('行为层（投影层复核）：fab 变化不影响合规特征（把 fab 接回抽取器则失败）', () => {
     const base: V04CompliantProductInput & { fab: string } = {
       skuId: 'C1',
       fitType: '修身型',
@@ -497,17 +549,85 @@ describe('§9.2 背对背隔离：合规特征集守卫', () => {
     });
   });
 
-  test('结构层：合规抽取器源码不读取任何人工字段', () => {
-    const code = stripStringLiterals(stripComments(readModelSource('features-v04-compliant.ts')));
-    for (const forbidden of COMPLIANT_FORBIDDEN_FIELDS) {
-      assert.ok(
-        !new RegExp(`\\.\\s*${forbidden}\\b`).test(code),
-        `合规抽取器不得读取 ${forbidden}`,
-      );
-      assert.ok(
-        !new RegExp(`\\[\\s*['"]${forbidden}['"]\\s*\\]`).test(code),
-        `合规抽取器不得按 ${forbidden} 取值`,
-      );
+  test('结构层：合规抽取器源码不得以任何访问形态读取人工字段（点号／方括号／模板键／in）', () => {
+    assertNoForbiddenFieldAccess(
+      readModelSource('features-v04-compliant.ts'),
+      '合规抽取器',
+    );
+  });
+
+  test('特征名白名单：合规抽取器的所有产出特征名必须可归属到白名单特征组', () => {
+    // 复核修单 B4：像 V7 对标签做归属那样，对特征名做数据驱动归属——
+    // 每个产出特征名必须能由白名单字段（或版型／面料词典）解释；
+    // `fab_present` 之类无法归属的特征名一律失败。
+    const corpus: V04CompliantProductInput[] = [
+      {
+        skuId: 'W1',
+        fitType: '修身型',
+        fabric: '棉氨纶',
+        category: '短袖T恤',
+        subCategory: '高领T恤',
+        season: 'Q2',
+        productLifecycle: '电商一年期',
+        ipCollaboration: '',
+        specialFunctionOrMaterial: '凉感-抗菌',
+      },
+      {
+        skuId: 'W2',
+        fitType: '宽松型',
+        fabric: '牛仔',
+        category: '外套',
+        subCategory: '棉外套',
+        season: 'Q4',
+        productLifecycle: '老品',
+        ipCollaboration: '联名A',
+        specialFunctionOrMaterial: '三防',
+      },
+      {
+        skuId: 'W3',
+        fitType: '未知版型',
+        fabric: '无法归类的面料',
+        category: '裙装',
+        subCategory: '',
+        season: '',
+        productLifecycle: '线下一年期',
+        ipCollaboration: '',
+        specialFunctionOrMaterial: '',
+      },
+    ];
+    const fitSuffixes = new Set([...Object.keys(FIT_TYPE_CATEGORIES), 'other']);
+    const fabricNames = new Set(FABRIC_KEYWORDS.map((entry) => entry.canonical));
+    const separator = /[-+/、，,;；\s]+/;
+    const corpusValues = {
+      'cat_': new Set(corpus.map((item) => item.category ?? '').filter(Boolean)),
+      'cat_sub_': new Set(corpus.map((item) => item.subCategory ?? '').filter(Boolean)),
+      'season_': new Set(corpus.map((item) => item.season ?? '').filter(Boolean)),
+      'lifecycle_': new Set(corpus.map((item) => item.productLifecycle ?? '').filter(Boolean)),
+      'ip_': new Set(corpus.map((item) => item.ipCollaboration ?? '').filter(Boolean)),
+      'craft_': new Set(
+        corpus.flatMap((item) =>
+          (item.specialFunctionOrMaterial ?? '').split(separator).map((token) => token.trim()).filter(Boolean),
+        ),
+      ),
+    };
+    const attributable = (name: string): boolean => {
+      if (name.startsWith('fit_') && fitSuffixes.has(name.slice('fit_'.length))) return true;
+      if (fabricNames.has(name)) return true;
+      for (const [prefix, values] of Object.entries(corpusValues)) {
+        if (name.startsWith(prefix) && values.has(name.slice(prefix.length))) return true;
+      }
+      return false;
+    };
+    const produced = new Set<string>();
+    for (const input of corpus) {
+      for (const name of Object.keys(extractCompliantBaseFeatures(input))) produced.add(name);
+    }
+    assert.ok(produced.size > 0);
+    for (const prefix of ['fit_', 'fabric_', 'cat_', 'season_', 'lifecycle_', 'ip_', 'craft_']) {
+      assert.ok([...produced].some((name) => name.startsWith(prefix)), `语料应覆盖 ${prefix} 组`);
+    }
+    for (const name of produced) {
+      assert.ok(attributable(name), `特征名 ${name} 无法归属到任何白名单特征组`);
     }
   });
 

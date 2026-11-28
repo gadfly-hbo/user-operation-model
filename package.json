@@ -18,7 +18,8 @@
     "offline-check": "node --import ./scripts/offline-check/block-net.mjs scripts/offline-check/guard-selftest.mjs && node scripts/offline-check/offline-e2e.mjs && node scripts/offline-check/tool1-offline.mjs",
     "test:golden": "node scripts/golden-tool1.mjs",
     "test:fidelity-v04": "node scripts/fidelity-v04.mjs",
-    "pipeline:v06": "node scripts/v06-pipeline.mjs"
+    "pipeline:v06": "node scripts/v06-pipeline.mjs",
+    "check:archive-content": "node scripts/check-no-archive-content.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
