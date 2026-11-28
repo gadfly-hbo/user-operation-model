@@ -26,12 +26,13 @@
  * 本单产出与自校验模型包；写入 model-mlflow 账本属 P2-8（用户 2026-11-28 已授权，Stage 只到 Staging）。
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { V06_FEATURE_GROUPS } from '../pipeline/v06/lib/features-v06.js';
 import type { V06ModelArtifact, V06SelectionGate } from '../pipeline/v06/04-select-final.js';
 import type { V06ValidationCheck } from '../pipeline/v06/06-validate.js';
+import { STAGE06_CHECK_IDS } from '../register/validation-gate.js';
 import { renderV06PredictModule } from './predict-template.js';
 
 /** 模型包的输入。 */
@@ -122,8 +123,8 @@ const GATE_KEYS = [
   'gate5_frozen_inputs_and_fail_closed',
 ] as const;
 
-/** 阶段 06 的固定校验编号（V1–V12，与 register/validation-gate.ts 同源约定）。 */
-const GATE_CHECK_IDS = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10', 'V11', 'V12'];
+/** 阶段 06 的固定校验编号（单一来源：register/validation-gate.ts 的 STAGE06_CHECK_IDS，复核 R3-A3 合并两份字面拷贝）。 */
+const GATE_CHECK_IDS: readonly string[] = STAGE06_CHECK_IDS;
 const GATE_CHECK_ID_SET: ReadonlySet<string> = new Set(GATE_CHECK_IDS);
 
 /** 阶段 05 的判定结果 → PASS／FAIL；未判定（null/缺失）即抛错，不静默。 */
@@ -355,13 +356,23 @@ ${input.method || '（未提供）'}
   };
 }
 
-/** 把模型包写到目标目录（目录会被创建；同名文件已存在即抛错，避免静默覆盖）。 */
+/**
+ * 把模型包写到目标目录（目录会被创建；同名文件已存在即抛错，避免静默覆盖）。
+ *
+ * 复核修单 R3-A1（review-p2-round3.md）：`cleanDirectoryFirst: true` 时先在内存构建
+ * （`buildV06ModelPackage` 内部 fail-closed，任一校验非 PASS 即抛错、不触发任何文件系统动作），
+ * **构建成功后**才清理目录并落盘——管线脚本不得「先 rmSync 再构建」：导出门控一旦失效，
+ * 既有包目录会先被删掉（复核 M7b 实测）。
+ */
 export function writeV06ModelPackage(
   input: V06ModelPackageInput,
   outDir: string,
-  options?: { overwrite?: boolean },
+  options?: { overwrite?: boolean; cleanDirectoryFirst?: boolean },
 ): { dir: string; filePaths: Record<string, string> } {
   const built = buildV06ModelPackage(input);
+  if (options?.cleanDirectoryFirst) {
+    rmSync(outDir, { recursive: true, force: true });
+  }
   mkdirSync(outDir, { recursive: true });
   const filePaths: Record<string, string> = {};
   for (const [name, content] of Object.entries(built.files)) {

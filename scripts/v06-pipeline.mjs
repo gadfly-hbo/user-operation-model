@@ -42,7 +42,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -356,7 +356,9 @@ async function main() {
       ]),
     ),
   };
-  rmSync(args.packageDir, { recursive: true, force: true });
+  // 复核修单 R3-A1：包目录清理交给导出器在内存构建成功之后执行（cleanDirectoryFirst）——
+  // 脚本不得「先 rmSync 再构建」：导出门控一旦失效（复核 M7b），既有包目录会先被删掉。
+  // 导出器内部 fail-closed：任一校验非 PASS 即抛错，不清理、不落盘。
   const written = pipeline.writeV06ModelPackage(
     {
       artifact,
@@ -385,7 +387,7 @@ async function main() {
         '§9.2 合规特征集；后处理为负值截断 + 按维度归一化。',
     },
     args.packageDir,
-    { overwrite: true },
+    { overwrite: true, cleanDirectoryFirst: true },
   );
   say(`模型包导出 · ${written.dir} · ${Object.keys(written.filePaths).length} 个文件`);
 

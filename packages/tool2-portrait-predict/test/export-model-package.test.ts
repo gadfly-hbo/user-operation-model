@@ -16,7 +16,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -489,5 +489,52 @@ describe('门槛结论：manifest 由管线实际结果生成', () => {
     const first = buildV06ModelPackage(BASE_INPUT);
     const second = buildV06ModelPackage(BASE_INPUT);
     assert.equal(first.files['manifest.json'], second.files['manifest.json']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R3-A1（review-p2-round3.md 建议）：包目录清理只发生在内存构建成功之后。
+// 旧顺序（脚本先 rmSync 再构建）在导出门控失效时会把既有包目录先删掉（复核 M7b）。
+// ---------------------------------------------------------------------------
+
+describe('导出器清理顺序（R3-A1）', () => {
+  test('cleanDirectoryFirst：构建抛错时不得动既有包目录（rmSync 只在构建成功后发生）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'uom-pkg-clean-fail-'));
+    writeFileSync(join(dir, 'sentinel-keep.txt'), 'keep', 'utf8');
+    writeFileSync(join(dir, 'predict.mjs'), '// stale previous package\n', 'utf8');
+    const failingChecks = STAGE06_CHECK_IDS.map((id) =>
+      id === 'V9' ? { id, result: 'fail' as const } : { id, result: 'pass' as const },
+    );
+    const badInput: V06ModelPackageInput = {
+      ...BASE_INPUT,
+      gateConclusion: { ...gateConclusionFixture(), validationChecks: failingChecks },
+    };
+    assert.throws(
+      () => writeV06ModelPackage(badInput, dir, { overwrite: true, cleanDirectoryFirst: true }),
+      /V9/,
+      '校验含 FAIL 的构建必须抛错',
+    );
+    assert.equal(
+      readFileSync(join(dir, 'sentinel-keep.txt'), 'utf8'),
+      'keep',
+      '构建失败时既有目录内容不得被动',
+    );
+    assert.equal(
+      readFileSync(join(dir, 'predict.mjs'), 'utf8'),
+      '// stale previous package\n',
+      '构建失败时既有包文件不得被删',
+    );
+  });
+
+  test('cleanDirectoryFirst：成功导出后目录恰好 3 文件（陈旧文件被清理）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'uom-pkg-clean-ok-'));
+    writeFileSync(join(dir, 'stale-leftover.txt'), 'x', 'utf8');
+    const written = writeV06ModelPackage(BASE_INPUT, dir, { overwrite: true, cleanDirectoryFirst: true });
+    assert.deepEqual(
+      readdirSync(dir).sort(),
+      ['README.md', 'manifest.json', 'predict.mjs'],
+      '成功导出后目录应恰好 3 文件（陈旧文件被清理）',
+    );
+    assert.equal(Object.keys(written.filePaths).length, 3);
   });
 });

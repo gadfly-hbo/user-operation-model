@@ -414,7 +414,6 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
         // 此时按维度语义判定：其余维度出现「折内 ≠ 全量」即证明折内计算，等值维度只记录；
         // **整折所有维度**都等值 → 折内性完全无法证明（整折泄漏不可排除）→ fail（fail-closed）。
         const indistinguishable: string[] = [];
-        let anyDimensionProvesFoldInternal = false;
         for (const dimension of V06_TARGET_DIMENSIONS) {
           const recomputed = meanDistribution(trainSamples, dimension);
           const key = `fold:${fold}:${dimension}`;
@@ -429,8 +428,6 @@ export function validateV06(input: V06ValidateInput): V06ValidationCheck[] {
           const globalBaseline = globalByDimension.get(dimension)!;
           if (sameDistribution(recomputed, globalBaseline)) {
             indistinguishable.push(dimension);
-          } else {
-            anyDimensionProvesFoldInternal = true;
           }
         }
         if (indistinguishable.length === V06_TARGET_DIMENSIONS.length) {

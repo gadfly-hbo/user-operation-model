@@ -17,7 +17,17 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1193,20 +1203,264 @@ describe('tool2 包级结构守卫', () => {
     }
   });
 
-  test('结构守卫（R2-S1）：模型包导出被阶段 06 结果门控——有 FAIL 不导出、不覆盖既有包', () => {
+  test('结构守卫（R3-S1·AST）：定义点必须由运行时计算赋值——foldsSha256 来自读取 folds 文件字节的 sha256，coefficientHash 来自 v06CoefficientHash', async () => {
+    // 第三轮复核 M4d／M4e／M4h：使用点守卫只锁 validate 入参与断言实参的形态，
+    // 定义点改成 `const foldsSha256 = pipeline.FROZEN_FOLDS_SHA256`（或 let + 重赋值）后
+    // 全量 447 全绿、篡改 folds 的根上管线 12/12 并导出。本守卫把**定义点**一并锁死：
+    // 两个哈希变量必须是 const、恰好定义一次、定义后不得重新赋值（别名中间量／重赋值即绕过），
+    // 且初始化式必须是「读取 folds 文件字节 → sha256」与 `pipeline.v06CoefficientHash(artifact)` 的运行时计算。
+    const tsModule = await import('typescript');
+    const ts: typeof tsNS = (tsModule as unknown as { default?: typeof tsNS }).default ?? tsModule;
+    const scriptPath = resolve(here, '../../../../scripts/v06-pipeline.mjs');
+    const sourceFile = ts.createSourceFile(
+      scriptPath,
+      readFileSync(scriptPath, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+
+    const declarations = new Map<string, { initializers: tsNS.Expression[]; constKeyword: boolean }>();
+    const reassigned = new Set<string>();
+    const walk = (node: tsNS.Node): void => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        const entry = declarations.get(node.name.text) ?? { initializers: [], constKeyword: false };
+        if ((node.parent.flags & ts.NodeFlags.Const) !== 0) entry.constKeyword = true;
+        if (node.initializer) entry.initializers.push(node.initializer);
+        declarations.set(node.name.text, entry);
+      }
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        reassigned.add(node.left.text);
+      }
+      node.forEachChild(walk);
+    };
+    sourceFile.forEachChild(walk);
+
+    const isSimpleAlias = (expression: tsNS.Expression): boolean =>
+      ts.isStringLiteral(expression) ||
+      ts.isNumericLiteral(expression) ||
+      ts.isIdentifier(expression) ||
+      ts.isPropertyAccessExpression(expression);
+
+    // ---- foldsSha256：必须由「读取 folds 文件字节 → sha256」的运行时计算赋值 ----
+    const folds = declarations.get('foldsSha256');
+    assert.ok(folds, '管线脚本必须定义 foldsSha256');
+    assert.ok(
+      folds.constKeyword,
+      'foldsSha256 必须以 const 定义（let + 重赋值即定义点绕过，复核 M4e）',
+    );
+    assert.strictEqual(folds.initializers.length, 1, 'foldsSha256 必须恰好定义（初始化）一次');
+    assert.ok(
+      !reassigned.has('foldsSha256'),
+      'foldsSha256 定义后不得重新赋值（复核 M4e：let + 重赋值为常量）',
+    );
+    const foldsInit = folds.initializers[0]!;
+    assert.ok(
+      !isSimpleAlias(foldsInit),
+      `foldsSha256 禁止以字面量／常量标识符／别名中间量直接赋值（定义点绕过，复核 M4d），实际：${foldsInit.getText(sourceFile)}`,
+    );
+    // 形态：createHash('sha256').update(readFileSync(foldsPath)).digest('hex')
+    assert.ok(
+      ts.isCallExpression(foldsInit) &&
+        ts.isPropertyAccessExpression(foldsInit.expression) &&
+        foldsInit.expression.name.text === 'digest' &&
+        foldsInit.arguments.length === 1 &&
+        ts.isStringLiteral(foldsInit.arguments[0]!) &&
+        foldsInit.arguments[0]!.text === 'hex',
+      `foldsSha256 必须经 digest('hex') 产出，实际：${foldsInit.getText(sourceFile)}`,
+    );
+    const digestReceiver = (foldsInit as tsNS.CallExpression).expression as tsNS.PropertyAccessExpression;
+    const updateCall = digestReceiver.expression;
+    assert.ok(
+      ts.isCallExpression(updateCall) &&
+        ts.isPropertyAccessExpression(updateCall.expression) &&
+        updateCall.expression.name.text === 'update' &&
+        updateCall.arguments.length === 1 &&
+        ts.isCallExpression(updateCall.arguments[0]!) &&
+        ts.isIdentifier(updateCall.arguments[0]!.expression) &&
+        updateCall.arguments[0]!.expression.text === 'readFileSync' &&
+        updateCall.arguments[0]!.arguments.length === 1 &&
+        ts.isIdentifier(updateCall.arguments[0]!.arguments[0]!) &&
+        updateCall.arguments[0]!.arguments[0]!.text === 'foldsPath',
+      `foldsSha256 必须来自 readFileSync(foldsPath) 的文件字节（运行时读取），实际：${updateCall.getText(sourceFile)}`,
+    );
+    const updateReceiver = (updateCall as tsNS.CallExpression).expression as tsNS.PropertyAccessExpression;
+    const createHashCall = updateReceiver.expression;
+    assert.ok(
+      ts.isCallExpression(createHashCall) &&
+        ts.isIdentifier(createHashCall.expression) &&
+        createHashCall.expression.text === 'createHash' &&
+        createHashCall.arguments.length === 1 &&
+        ts.isStringLiteral(createHashCall.arguments[0]!) &&
+        createHashCall.arguments[0]!.text === 'sha256',
+      `foldsSha256 必须用 sha256 计算，实际：${createHashCall.getText(sourceFile)}`,
+    );
+
+    // ---- coefficientHash：必须由 pipeline.v06CoefficientHash(artifact) 运行时派生 ----
+    const coefficient = declarations.get('coefficientHash');
+    assert.ok(coefficient, '管线脚本必须定义 coefficientHash');
+    assert.ok(
+      coefficient.constKeyword,
+      'coefficientHash 必须以 const 定义（复核 M4h：定义点改常量即绕过）',
+    );
+    assert.strictEqual(coefficient.initializers.length, 1, 'coefficientHash 必须恰好定义（初始化）一次');
+    assert.ok(
+      !reassigned.has('coefficientHash'),
+      'coefficientHash 定义后不得重新赋值',
+    );
+    const coefficientInit = coefficient.initializers[0]!;
+    assert.ok(
+      ts.isCallExpression(coefficientInit) &&
+        ts.isPropertyAccessExpression(coefficientInit.expression) &&
+        ts.isIdentifier(coefficientInit.expression.expression) &&
+        coefficientInit.expression.expression.text === 'pipeline' &&
+        coefficientInit.expression.name.text === 'v06CoefficientHash' &&
+        coefficientInit.arguments.length === 1 &&
+        ts.isIdentifier(coefficientInit.arguments[0]!) &&
+        coefficientInit.arguments[0]!.text === 'artifact',
+      `coefficientHash 必须由 pipeline.v06CoefficientHash(artifact) 运行时派生（字面量／常量标识符即绕过，复核 M4h），实际：${coefficientInit.getText(sourceFile)}`,
+    );
+  });
+
+  test('结构守卫（R2-S1／R3-A1）：模型包导出被阶段 06 结果门控——有 FAIL 不导出、不覆盖既有包；包目录清理只发生在内存构建成功之后', () => {
     const source = stripComments(readFileSync(resolve(here, '../../../../scripts/v06-pipeline.mjs'), 'utf8'));
     const gateIndex = source.indexOf('failed > 0');
     const exportIndex = source.indexOf('writeV06ModelPackage(');
-    const rmIndex = source.indexOf('rmSync(');
     assert.ok(gateIndex >= 0, '脚本必须统计阶段 06 失败数');
     assert.ok(exportIndex >= 0, '脚本必须包含模型包导出调用');
     assert.ok(
       gateIndex < exportIndex,
       `阶段 06 失败门控（偏移 ${gateIndex}）必须先于导出调用（偏移 ${exportIndex}）`,
     );
+    // 复核第三轮 R3-A1（M7b）：脚本先 rmSync 再构建时，导出门控一旦失效，既有包目录会先被删除。
+    // 清理动作必须交由导出器在**内存构建成功之后**执行（cleanDirectoryFirst），脚本内不得自带 rmSync。
     assert.ok(
-      rmIndex < 0 || gateIndex < rmIndex,
-      `失败门控（偏移 ${gateIndex}）必须先于包目录清理 rmSync（偏移 ${rmIndex}）——失败运行不得覆盖既有包`,
+      source.includes('cleanDirectoryFirst'),
+      '包目录清理必须经导出器 cleanDirectoryFirst（构建成功后才清理+落盘）',
+    );
+    assert.ok(
+      !source.includes('rmSync('),
+      '导出路径不得在脚本里自行 rmSync 包目录（构建失败时不得破坏既有包）——改用导出器 cleanDirectoryFirst',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 行为守卫（R3-S1）：真实脚本路径上的 folds 篡改必 FAIL（需要归档固化数据；CI 无数据时跳过）
+// ---------------------------------------------------------------------------
+
+describe('管线脚本行为守卫（R3-S1）', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const repoRoot = resolve(here, '../../../..');
+  const scriptPath = resolve(repoRoot, 'scripts', 'v06-pipeline.mjs');
+  const INTAKE_RELATIVE = join('data', 'incoming', '2026-09-11-tmall-guanqi-25q4-portraits');
+  const FOLDS_RELATIVE = join(
+    'experiments',
+    '2026-09-11-v0.6-tmall-guanqi-portrait-only',
+    'outputs',
+    'folds.json',
+  );
+
+  /** 与管线脚本同序定位固化 v0.6 包根；找不到（CI 无固化数据）返回 undefined。 */
+  function resolveFixedV06Root(): string | undefined {
+    const candidates: string[] = [];
+    if (process.env.UOM_V06_FIXED_ROOT) candidates.push(resolve(process.env.UOM_V06_FIXED_ROOT));
+    if (process.env.UOM_ARCHIVE_FIXED_ROOT) {
+      candidates.push(resolve(process.env.UOM_ARCHIVE_FIXED_ROOT));
+      candidates.push(join(resolve(process.env.UOM_ARCHIVE_FIXED_ROOT), 'v06-tmall-25q4'));
+    }
+    try {
+      const common = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+      if (common) {
+        candidates.push(
+          join(dirname(resolve(repoRoot, common)), 'data', 'archive-modelevol', 'v06-tmall-25q4'),
+        );
+      }
+    } catch {
+      // git 不可用时跳过该候选
+    }
+    candidates.push(join(repoRoot, 'data', 'archive-modelevol', 'v06-tmall-25q4'));
+    for (const candidate of candidates) {
+      if (existsSync(join(candidate, INTAKE_RELATIVE)) && existsSync(join(candidate, FOLDS_RELATIVE))) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  const fixedRoot = resolveFixedV06Root();
+
+  test('行为层：真实脚本路径上 folds 被换成篡改副本（走实际读取与哈希计算）→ 阶段 02 必 FAIL、不导出', { skip: !fixedRoot && '需要归档固化数据（CI 无固化数据，不接触真实数据）' }, () => {
+    const root = fixedRoot!;
+    const sandbox = mkdtempSync(join(tmpdir(), 'uom-v06-tamper-'));
+    const fakeRoot = join(sandbox, 'fixed-root');
+    const outDir = join(sandbox, 'work');
+    const packageDir = join(sandbox, 'package');
+    mkdirSync(join(fakeRoot, dirname(FOLDS_RELATIVE)), { recursive: true });
+
+    // 临时根：除 folds.json 外逐文件符号链接到真实固化包（只读），folds.json 用篡改副本
+    const walk = (source: string, target: string, relative: string): void => {
+      mkdirSync(target, { recursive: true });
+      for (const entry of readdirSync(source, { withFileTypes: true })) {
+        const childRelative = join(relative, entry.name);
+        if (childRelative === FOLDS_RELATIVE) continue;
+        const childSource = join(source, entry.name);
+        const childTarget = join(target, entry.name);
+        if (entry.isDirectory()) walk(childSource, childTarget, childRelative);
+        else symlinkSync(childSource, childTarget);
+      }
+    };
+    walk(root, fakeRoot, '');
+
+    // 篡改副本：真实 folds.json 字节翻 1 字节（seed 数值首位数字 +1）——哈希随之改变
+    const realFolds = readFileSync(join(root, FOLDS_RELATIVE));
+    const marker = Buffer.from('"seed":');
+    const markerIndex = realFolds.indexOf(marker);
+    assert.ok(markerIndex >= 0, 'folds.json 应含 seed 字段');
+    const tampered = Buffer.from(realFolds);
+    let digitIndex = markerIndex + marker.length;
+    while (digitIndex < tampered.length && (tampered[digitIndex] === 32 || tampered[digitIndex] === 9)) {
+      digitIndex += 1; // 跳过冒号后的空白（"seed": 20260911）
+    }
+    const digit = tampered[digitIndex]!;
+    assert.ok(digit >= 48 && digit <= 56, `seed 首位应是数字，实际 ${String.fromCharCode(digit)}`);
+    tampered[digitIndex] = digit + 1;
+    const realSha = createHash('sha256').update(realFolds).digest('hex');
+    const tamperedSha = createHash('sha256').update(tampered).digest('hex');
+    assert.notEqual(tamperedSha, realSha, '一字节篡改必须改变文件哈希');
+    writeFileSync(join(fakeRoot, FOLDS_RELATIVE), tampered);
+
+    // 跑真实脚本：显式 --root（沙箱根）与 --out／--package-dir（沙箱），不触碰主仓 models/
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, '--root', fakeRoot, '--out', outDir, '--package-dir', packageDir],
+      { encoding: 'utf8', timeout: 300000 },
+    );
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    assert.notEqual(
+      result.status,
+      0,
+      `篡改 folds 的根上管线必须失败，实际退出码 ${result.status}。输出：\n${output.slice(0, 2000)}`,
+    );
+    assert.ok(
+      output.includes('阶段 02'),
+      '失败必须发生在阶段 02（folds）——应已走过阶段 01。输出：\n' + output.slice(0, 2000),
+    );
+    assert.ok(
+      output.includes('冻结 folds 哈希不一致'),
+      `阶段 02 必须以「冻结 folds 哈希不一致」失败（哈希来自实际读取的文件字节）。输出：\n${output.slice(0, 2000)}`,
+    );
+    assert.ok(
+      !existsSync(join(packageDir, 'manifest.json')),
+      '失败运行不得导出任何模型包',
     );
   });
 });

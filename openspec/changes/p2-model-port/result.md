@@ -13,6 +13,9 @@
 > 全部新测试先取真 RED 留档于 `.local/p2/fix-review/`，处置与证据见 §14；模型包升版 v2 并登记（§8 第 22 条）。
 > **第六轮（2026-11-28，第二轮复核应修）**：按 [review-p2-round2.md](review-p2-round2.md)（独立复核，结论 **PASS**、应修 2 项）
 > 完成 R2-S1／R2-S2 修单与建议项 1–5，全部新测试先取真 RED 留档于 `.local/p2/fix-r2/`，处置与证据见 §15。
+> **第七轮（2026-11-28，第三轮复核应修）**：按 [review-p2-round3.md](review-p2-round3.md)（独立复核，结论 **FAIL**：阻断 B-1 文档链接＋应修 R3-S1／R3-S2／R3-S3）
+> 完成接线层守卫升级（AST 定义点守卫、登记入口调用判定＋fetch 打桩行为层）与建议项处置；阻断 B-1 由主 agent 入库两份复核报告（`568777e`）关闭。
+> 守卫类用例的 RED 以「旧守卫放行变异复现＋新守卫杀死同款变异」重放日志佐证（`.local/p2/fix-r3/`），处置与证据见 §15.5。
 
 ## 1. 任务状态
 
@@ -366,9 +369,9 @@ P2 规格 §10 预期「合规基线数字会比 0.6957 低（fab 是有信息�
 | manifest 字节说明 | — | `manifest.json` 相对已登记 v2 新增 `gateConclusion.validationChecks`（R2-S1 的登记依据），另 `trainedAt` 为设计上的非确定性溯源区——属预期差异，**本轮未做任何登记**（下次登记按升版口径走 v3） |
 | R2-S1 端到端（失败不导出） | B3-LEAK 变异（dist 基线改用全量样本）后重跑管线 | **PASS（KILLED）**：V12 FAIL → `阶段 06 有 1 条校验未通过——按 fail-closed 跳过模型包导出`，退出 1，`models/uom-tool2-portrait-v06/v2/manifest.json` 哈希不变（不导出、不覆盖既有包）；还原后复跑 12/12 PASS（日志 `.local/p2/fix-r2/pipeline-v06-r2s1-e2e-fail.log`／`pipeline-v06-r2-clean-rerun.log`） |
 | 溯源校验 | `node scripts/verify-modelevol-provenance.mjs` | **PASS**（退出码 0；5 包一致，含 187 条内嵌清单） |
-| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS**（126 条相对链接（较二轮复核时 122 增加，来自本轮 result／baseline 增补），错误 0，告警 0） |
+| 文档链接 | `python3 .github/scripts/check-docs-links.py .` | **PASS**（在两份复核报告入库后的干净检出上 PASS；入库前干净检出曾有 4 条断链（第三轮 B-1）；本轮提交后再于 `/tmp` 干净检出复跑复核，结果记于 §15.5） |
 | 数据守卫 | `python3 .github/scripts/check-data-guard.py .` | **PASS** |
-| 归档内容守卫 | `npm run check:archive-content` | **PASS**（黑名单 85 条运行时取自固化区；扫描 tracked 文本 **177** 个，0 命中——与二轮复核实测一致） |
+| 归档内容守卫 | `npm run check:archive-content` | **PASS**（黑名单 85 条运行时取自固化区；扫描 tracked 文本 **179** 个，0 命中（第三轮复核实测值；本行原记 177 为陈旧计数——第三轮 R3-A6；两份复核报告入库后本轮实测 **181** 个，仍 0 命中）） |
 | 依赖审计 | `npm audit --audit-level=high` | **PASS**（found 0 vulnerabilities；本轮未新增任何运行时依赖） |
 | 归档只读性 | `find /Users/huangbo/Dev/Archive/ModelEvol -newermt 2026-11-26 -type f`（排除 .DS_Store/.qoder） | **PASS**（0 个文件） |
 | model-mlflow 只读性 | `git -C <model-mlflow> status --porcelain`（空）；`sqlite3 -readonly …mlflow.db`（mode=ro） | **PASS**（工作树干净；账本仅 v1/v2 均 Staging/READY，无 Production／Archived——**本轮零登记、零 Stage 变更**） |
@@ -864,6 +867,8 @@ npm test                    # 含黄金用例与字节一致用例（合成夹�
 | 建议项 2（R2-A4）`attr` 组口径写明 | `docs/match-model-baseline.md` §7.1 特征集行写明：`attr` 特征组即**货品属性（`productAttribute`）**，2026-11-28 用户裁定追认为客观属性，实际取值仅三种生命周期类标签，集合钉死位置与 fail-closed 校验一并写明 | **PASS（已修）** | `docs/match-model-baseline.md:113` |
 | 建议项 3（R2-A7）夹具 `'新品'` | 夹具确以 `productAttribute` 取值使用（绕过阶段 01 故未触发集合校验）：`pipeline-v06.test.ts` `syntheticSample` 与 `export-model-package.test.ts` 4 处 `'新品'` 全部改为集合内值 **`'电商一年期'`**（保留取值变化）；允许集合未动（仍为用户裁定的三值）；`packages/core/test/normalize.test.ts` 的 `'新品'` 属工具1 normalize 行夹具、非 `productAttribute` 字段，不动 | **PASS（已修）** | `packages/tool2-portrait-predict/test/{pipeline-v06,export-model-package}.test.ts`；`npm run check` 447/447 全绿（黄金冻结常量不变：仅依赖 `fit` 组） |
 | 建议项 5（O5 三层漏网，生产数据流不可达） | 如实记录为**已知盲区**：抽取器源码「解构＋内容条件」形态不被结构守卫覆盖，行为层有/无探针未含词典触发词文本——该手法（复核 O5）本轮三守卫均不命中，**NOT_PROVED**（守卫覆盖未证明）；生产数据流不可达（阶段 01 白名单投影丢弃 `fab`、类型层无该字段、行为层有/无对比兜底常见形态），属纵深防御缺口而非已知生产漏洞；低成本加固方向（剥注释后禁读字段裸标识符／整串字面量探针＋触发词文本探针）留待后续变更，本单不修 | **NOT_PROVED（已知盲区，如实记录）** | review-p2-round2.md §4 O5 行、§5.3 R2-A1；本行为本单唯一不修项 |
+| 建议项 6（R2-A2）归档内容守卫抽样盲区 | 【第七轮补记，第三轮 R3-S3】守卫保持抽样黑名单（FAB 片段＋记录前缀（含款号＋属性组合）＋画像行），未新增「去款号去 FAB 的属性组合」needle、未改全量遍历——**本单不修**：该注入形态仍不被守卫命中（复核 B1-guard-attrs 实测退出 0），属抽样守卫的已知覆盖缺口、纵深防御的一层（款号＋属性组合前缀与 FAB 片段已有覆盖）；加固方向（属性组合 needle／全量遍历记录／不可读文件计数告警）留待后续变更 | **NOT_PROVED（「仅属性组合」注入不被守卫覆盖，如实记录）** | review-p2-round2.md §4 B1-guard-attrs 行、§5.3 R2-A2；`scripts/check-no-archive-content.mjs` 本轮零改动 |
+| 建议项 7（R2-A6）S6 守卫为命名绊线 | 【第七轮补记，第三轮 R3-S3】按建议在 result／baseline **如实记录为已知限制**：换名的第二份求解器（`inv`／`fitLocal`）不被 S6 结构守卫命中（复核实测全绿）；真正的机器锁是 S2 钉死系数区哈希（换求解器必改系数区字节、阶段 04 即 FAIL，仅本地固化数据可跑）＋第七轮新增的 AST 定义点守卫（§15.5 R3-S1）；限制本身不消除，已写入 `docs/match-model-baseline.md` §7.5 | **PASS（已按建议记录为已知限制；限制本身持续存在，如实披露）** | `docs/match-model-baseline.md` §7.5 新增行；review-p2-round2.md §4 S6-bypass 行、§5.3 R2-A6 |
 
 ### 15.3 本轮涉及的文件清单
 
@@ -877,3 +882,60 @@ npm test                    # 含黄金用例与字节一致用例（合成夹�
 2. **model-mlflow 登记**：manifest 新增 `validationChecks` 后本地再生包与已登记 v2 字节不同——下次登记按升版口径走 v3，需另行授权（本单未做任何登记）。
 3. 断网 e2e、黄金 G1–G5、CI、PR、P2-13：**NOT_RUN**（与 §7.4 口径一致）。
 4. O5 盲区加固（建议项 5）：本单只记录，不修；是否立项由主 agent／用户决定。
+
+### 15.5 第三轮应修处置（2026-11-28：review-p2-round3.md R3-S1／R3-S2／R3-S3／建议项）
+
+> 依据：[review-p2-round3.md](review-p2-round3.md)（独立复核结论 **FAIL**：唯一阻断 B-1 为文档完整性——候选提交缺两份复核报告致干净检出 4 条断链；应修 3 项、建议 7 项）。
+> 修单由主 agent 另派的实现子代理执行；**作者不自评复核**——受影响范围须由独立复核者重验，本节只是处置记录。
+> TDD 纪律：守卫类用例对修单前**正确实现**本就通过（与二轮口径一致），其 RED 以「旧守卫放行变异的复现＋新守卫杀死同款变异」的重放日志佐证；R3-A1 另有对旧导出器行为的**真 RED**。
+> RED／变异日志（本工作树 `.local/p2/fix-r3/`，gitignore 区）：
+> `mutation-r3s1-m4d-old-guard-survives.log`（M4d 定义点改常量：旧守卫 50/50 全绿＝缺口复现）、
+> `mutation-r3s2-m8a-old-guard-survives.log`（M8a 删两处守卫调用：旧守卫 5/5 全绿＝缺口复现）、
+> `replay-r3s1-m4d-killed.log`（52：50/2，AST 定义点守卫＋行为层「篡改根上退出 0」双杀）、
+> `replay-r3s1-m4e-killed.log`／`replay-r3s1-m4h-killed.log`（各 52：51/1，AST 守卫杀死）、
+> `replay-r3s2-m8a-killed.log`（8：6/2，AST 结构守卫＋一致失败包走到健康检查）、
+> `red-r3a1-clean-dir-first.log`（22：21/1，旧导出器成功导出后陈旧文件残留＝真 RED）。
+> GREEN：`green-full-check.log`（全量 **454**/454，较上轮 +7：管线 AST 守卫 1＋管线行为层 1＋导出器 2＋登记 AST 守卫（替换文本守卫，净 0）＋登记行为层 3）、
+> `fidelity-v04.log`（两组冻结数字容差 0 逐位复现）、`pipeline-v06-r3.log`（12/12 PASS，V4/V9 双哈希与 `FAIL_NOT_POSITIVE` 逐位不变，仍导出 v2 且 `predict.mjs` `9b742947…`／`README.md` `e1bef2a9…` 与已登记 v2 逐字节一致）。
+
+#### 应修项与阻断
+
+| 项 | 处置 | 状态 | 证据 |
+| --- | --- | --- | --- |
+| **R3-S1** B2 守卫只锁使用点、不锁定义点（M4d／M4e／M4h 存活） | ① 新增 **AST 定义点守卫**（`pipeline-v06.test.ts`「结构守卫（R3-S1·AST）」）：`foldsSha256` 必须 `const`、恰好定义一次、定义后不得重新赋值，初始化式必须精确是「读取 folds 文件字节 → sha256」的运行时计算（`createHash('sha256').update(readFileSync(foldsPath)).digest('hex')`）；`coefficientHash` 必须由 `pipeline.v06CoefficientHash(artifact)` 运行时派生——字面量／常量标识符／别名中间量／`let`＋重赋值一律拒绝；② 使用点守卫（R2-S2·AST）保持不变——使用点与定义点都锁；③ **行为层新增真实脚本路径用例**（CI 无固化数据时 skip）：临时沙箱根逐文件符号链接真实固化包、仅 `folds.json` 写入篡改副本（真实字节 seed 翻 1 字节），跑真实 `scripts/v06-pipeline.mjs`（`--out`／`--package-dir` 沙箱化、不触碰主仓 `models/`）→ 断言退出非 0、失败发生在阶段 02、报「冻结 folds 哈希不一致」、无任何包导出 | **PASS（已修；三个定义点变异重放全 KILLED）** | `replay-r3s1-m4d-killed.log`：AST 报错「foldsSha256 禁止以字面量／常量标识符／别名中间量直接赋值（定义点绕过，复核 M4d），实际：pipeline.FROZEN_FOLDS_SHA256」＋行为层「篡改 folds 的根上管线必须失败，实际退出码 0」；`replay-r3s1-m4e-killed.log`：「foldsSha256 必须以 const 定义（let + 重赋值即定义点绕过，复核 M4e）」；`replay-r3s1-m4h-killed.log`：「coefficientHash 必须由 pipeline.v06CoefficientHash(artifact) 运行时派生…实际：pipeline.EXPECTED_COEFFICIENT_SHA256」；行为用例本名实跑 PASS（沙箱根退出 1、阶段 02「冻结 folds 哈希不一致」、无包导出） |
+| **R3-S2** 登记入口守卫可被整体删除（M8a 存活：结构守卫命中的是 `let` 声明） | ① 结构守卫从 `source.indexOf` 文本判定改为 **AST「调用」判定**（`register-validation-gate.test.ts`「结构守卫（R3-S2·AST）」）：`assertLoopbackMlflowUrl` ≥1 处、`assertStage06ChecksRegistrable` ≥2 处（manifest 包内记录与管线产物两处），且全部先于 main 语句流中首个 `fetch` 调用语句；`let` 声明／导入解构不算调用；模块加载期（`await main()` 前）不得出现 fetch；② **行为层新增 fetch 打桩测试**（`--import` 预加载打桩模块：记录并拦截一切请求、零联网）：一致失败包（manifest 与管线产物同带 V12=fail、gate5 手标 PASS，即 M8a 逃逸包）→ 必须拒绝且 **fetch 尝试 0**；回环外 URL → **fetch 前拒绝**且尝试 0；正向对照（全 PASS＋`FAIL_NOT_POSITIVE`）→ 过全部入口守卫、恰好停在首个 `/health` 请求（打桩拦截、退出 1） | **PASS（已修；M8a 重放 KILLED）** | `replay-r3s2-m8a-killed.log`（8：6/2）：AST 报错「assertStage06ChecksRegistrable 必须至少实际调用两次（manifest 包内记录与管线产物），实际 0 处——删守卫调用即放行失败包」；一致失败包用例失败＝该包已走到健康检查（拒绝原因不再含「V12 校验结果不是 pass」）；三条行为用例本名实跑 PASS（合成夹具，零联网） |
+| **R3-S3** 第二轮建议 7 项中 R2-A2／R2-A6 无处置记录 | 在 §15.2 第二轮处置表补两行（标注「第七轮补记」）：R2-A2（守卫抽样盲区——本单不修，`NOT_PROVED`）、R2-A6（S6 命名绊线——按建议在 result／baseline 如实记录为已知限制） | **PASS（已补记，无空缺）** | §15.2 建议项 6／7 两行；`docs/match-model-baseline.md` §7.5 新增行 |
+| **B-1**（阻断）固定候选 `check-docs-links` FAIL | 两份复核报告已由主 agent 随 `568777e` 入库（本修单分支 tip）；§7.4 文档链接行按复核要求改写；本轮提交后在 `/tmp` 干净检出复跑链接检查（结果见下「干净检出链接检查」） | **PASS（主 agent 已关闭，本轮干净检出复跑确认）** | `git log --oneline -1 568777e`；下「干净检出链接检查」行 |
+
+#### 建议项
+
+| 项 | 处置 | 状态 | 证据 |
+| --- | --- | --- | --- |
+| **R3-A1** `rmSync` 先于构建（M7b：门控失效则既有包目录先被删） | 导出器 `writeV06ModelPackage` 新增 `cleanDirectoryFirst` 选项：**先内存构建**（`buildV06ModelPackage` 内部 fail-closed，任一校验非 PASS 即抛错、不触发任何文件系统动作）→ **构建成功后**才清理目录并落盘；管线脚本删除自带 `rmSync`、改传该选项；结构守卫（R2-S1）同步升级为「脚本不得自带 `rmSync`、必须用 `cleanDirectoryFirst`」；补两条行为测试（构建抛错不动既有包目录／成功后恰好 3 文件）。**记录不修**：复核方向「脚本直接复用 `assertStage06ChecksRegistrable` 替代自计数」未做——`failed > 0` 文本门控保留（结构守卫锁定其存在与位置），导出器自身 fail-closed 已由测试锁定 | **PASS（已修，另有真 RED）** | `red-r3a1-clean-dir-first.log`（旧导出器：成功导出后陈旧文件残留，AssertionError）；修复后 22/22；`green-full-check.log` 454/454 |
+| **R3-A3** V1–V12 清单两份字面拷贝 | 导出器 `model-package.ts` 的 `GATE_CHECK_IDS` 改为引用 `register/validation-gate.ts` 的 `STAGE06_CHECK_IDS`——登记守卫与导出器**同一份清单**（单一来源）。**记录不修**：导出器改为直接调用 `assertStage06ChecksRegistrable` 一节——导出器保留更具体的报错文案（逐条列出失败／缺失／未知编号），登记入口已有独立守卫 | **PASS（清单已合并单一来源）** | `model-package.ts` 的 import 与 `GATE_CHECK_IDS` 定义行；`npm run check` 454/454 |
+| **R3-A4** `anyDimensionProvesFoldInternal` 死变量 | 删除（`06-validate.ts` V12 内只写不读；折内性判定语义已由 `indistinguishable` 承载）；纯重构，行为由既有 V12 用例与实跑锁定 | **PASS（已删）** | `06-validate.ts`；全量 454/454；管线 12/12 |
+| **R3-A6** 计数陈旧 | §7.4 归档内容守卫行 177→实际值（第三轮复核实测 179；两份复核报告入库后本轮实测 **181**，0 命中）。**记录不修**：导出器／管线用例净增拆分说明、§8 顶部新旧编号对照行——留后续 | **PASS（计数已改为实际值）** | §7.4 归档内容守卫行；`npm run check:archive-content` 实测 181 个、0 命中 |
+| **R3-A7** `cp -p` 还原保留旧 mtime → dist 残留变异 | 记入本节「复核操作注意」 | **PASS（已记录）** | 本节「复核操作注意」 |
+| **R3-A2** 导出器宽松比较未被测试锁定（M6c 存活） | 本单不修：同款严格比较在**登记入口**已锁定（`validation-gate.ts` 严格拒绝非 `pass` 字面值，M6d／M6e KILLED），导出器侧「`'PASS'`／`undefined` 结果值被拒」用例留后续 | **NOT_RUN（本轮未补该用例，如实记录）** | review-p2-round3.md §3 M6c 行、§4.3 R3-A2 |
+| **R3-A5** baseline「上新类型」无对应输入列 | 本单不修：属文档口径问题——baseline 特征集行以「上新类型」指代 `attr` 组（即 `productAttribute`，二轮 R2-A4 已写明），包内 `usage.inputs` 无「上新类型」列，易被读成两个输入；措辞澄清留后续 | **NOT_RUN（未改文档，如实记录）** | review-p2-round3.md §4.3 R3-A5；`docs/match-model-baseline.md:113` |
+
+#### 干净检出链接检查（B-1 复验）
+
+- 本轮提交后执行：`git worktree add --detach /tmp/uom-links-check HEAD` → `python3 .github/scripts/check-docs-links.py .` → `git worktree remove --force /tmp/uom-links-check`。
+- 结果：**待本轮提交后填写**（提交前先行占位，提交后以独立小提交回填实测值）。
+
+#### 复核操作注意
+
+- **变异还原用 `cp -p` 会保留旧 mtime**：`tsc -b` 视为未变更而**不重编，`dist/` 残留变异 JS**（第三轮复核实测，R3-A7）。还原源文件后必须 `touch` 该源文件（或删除对应 `dist` 产物）并重建，再核对 `git diff` 为 0；`scripts/*.mjs` 类变异不经编译，还原后核对 sha256 与提交 blob 一致即可。
+
+#### 本轮涉及的文件清单
+
+- 修改：`scripts/v06-pipeline.mjs`（R3-A1 清理顺序）、`packages/tool2-portrait-predict/src/export/model-package.ts`（`cleanDirectoryFirst`＋V1–V12 清单单一来源）、`packages/tool2-portrait-predict/src/pipeline/v06/06-validate.ts`（死变量删除）、`packages/tool2-portrait-predict/test/{pipeline-v06,export-model-package,register-validation-gate}.test.ts`（新守卫与行为层）、`docs/match-model-baseline.md`（§7.5 一行）、`openspec/changes/p2-model-port/result.md`（本文件）
+- 未动：`scripts/register-model-mlflow.mjs`（**实现零改动**——本轮只把它的守卫接线锁进测试）、归档与 model-mlflow 本体（**零登记、零 Stage 变更**，账本 v1/v2 Staging 不动）、三份 review 报告（只读）、§16（主 agent 专项检查记录，待其按第三轮结果改写）
+
+#### 仍需主 agent／用户处理
+
+1. **§16「专项最终检查」**须按第三轮复核结果与本修单改写（本修单不动 §16）；「无阻断」表述已与第三轮结论（B-1 阻断）不符。
+2. **独立复核者重验受影响范围**（工程规范 §5.1）：R3-S1／R3-S2 新守卫与变异重放、R3-S1 行为层沙箱用例、R3-A1 导出顺序与 `cleanDirectoryFirst`、V1–V12 清单单一来源、R3-A4 死变量。
+3. **R3-A2／R3-A5／R3-A6 余项与「脚本复用 `assertStage06ChecksRegistrable`」**：本单记录不修，是否立项由主 agent／用户决定。
+4. 断网 e2e、黄金 G1–G5、CI、PR（P2-12）、真实数据重训（P2-13）：**NOT_RUN**（与 §7.4 口径一致）。
