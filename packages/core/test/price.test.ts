@@ -47,6 +47,11 @@ describe('resolveUnitPrice · 单一来源（SA-08）', () => {
     assert.deepEqual(resolveUnitPrice(target), { price: 399, source: 'unit-price' });
   });
 
+  test('unit-price 来源按 P1 基线四舍五入到两位小数（复核修正）', () => {
+    const target = product({ price: { unitPrice: 123.4567 } });
+    assert.deepEqual(resolveUnitPrice(target), { price: 123.46, source: 'unit-price' });
+  });
+
   test('全部缺失 → missing，不插补兜底价', () => {
     assert.deepEqual(resolveUnitPrice(product({ price: {} })), { source: 'missing' });
     assert.deepEqual(resolveUnitPrice(product({})), { source: 'missing' });

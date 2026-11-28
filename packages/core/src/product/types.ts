@@ -113,10 +113,7 @@ export interface ProductDossier {
    * 背对背隔离约束下，这些字段不得进入预测路径。
    */
   comparisonOnly?: Record<string, string[]>;
-  /**
-   * 单品人群画像（切片 A · SA-05 查询形态见 MCP `get_product_dossier`）。
-   * 档案本身不持有画像：画像在索引的 `portraits` 集合中按实体与月份键控。
-   */
+  /** 生命周期漏斗，按「月份 × 阶段」存放（SA-04）；源行月份为空归入 `unknown`。 */
   funnel?: FunnelByMonth;
   /** 单品经营指标，按月份键控（SA-04）；源行月份为空归入 `unknown`。 */
   performance?: Record<string, PerformanceMetrics>;

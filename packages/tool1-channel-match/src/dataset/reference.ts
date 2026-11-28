@@ -204,8 +204,9 @@ export function buildReferenceDataset(options: ReferenceDatasetOptions): MatchDa
       });
       const row = metrics.get(spu);
       // 单价与零售额统一走 core 的单一来源（切片 A · SA-08）：
-      // 参考数据的零售额／零售量放在所选月的指标层，件单价视为主数据 unitPrice
-      const stub = {
+      // 参考数据的零售额／零售量放在所选月的指标层，件单价视为主数据 unitPrice。
+      // 只组解析所需的最小输入（Pick<ProductDossier,'price'|'performance'>），不伪造档案
+      const priceInput: Pick<ProductDossier, 'price' | 'performance'> = {
         ...(row
           ? {
               performance: {
@@ -220,12 +221,12 @@ export function buildReferenceDataset(options: ReferenceDatasetOptions): MatchDa
           ...(row?.unitPrice !== undefined ? { unitPrice: row.unitPrice } : {}),
           ...(row?.retailAmount !== undefined ? { retailAmount: row.retailAmount } : {}),
         },
-      } as ProductDossier;
-      const resolvedPrice = resolveUnitPrice(stub, selectedMonth);
+      };
+      const resolvedPrice = resolveUnitPrice(priceInput, selectedMonth);
       const price = resolvedPrice.source === 'missing' ? undefined : resolvedPrice.price;
       const priceSource = resolvedPrice.source;
       if (resolvedPrice.source === 'missing') withoutPrice += 1;
-      const retailAmount = resolveRetailAmount(stub, selectedMonth);
+      const retailAmount = resolveRetailAmount(priceInput, selectedMonth);
       // 单品画像无月份：selectPortrait 按 unknown 层取用，不回退
       const selection = selectPortrait(
         { portraits: [portrait] },

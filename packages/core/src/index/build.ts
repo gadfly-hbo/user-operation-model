@@ -29,10 +29,10 @@ import {
 } from '../normalize/performance.js';
 import {
   parseDataDeclaration,
-  parseMonthRange,
   scopeTokens,
   toDeclaration,
 } from '../normalize/declaration.js';
+import { parsePeriod, periodMonths } from '../period/parse.js';
 import { platformId } from '../normalize/catalog/tables.js';
 import type { NormalizationIssue } from '../normalize/types.js';
 import type { DataIndex } from './types.js';
@@ -612,14 +612,16 @@ function applyDeclaration(
  *
  * 区间月份（如 `2025-07~2026-06`）要求区间内的每个月都在声明范围内：
  * 画像内部的分布无法裁剪，只有一部分落在范围内时整份跳过。
+ * 期间识别走 `parsePeriod`（复核建议 6：不再用 `includes('~')` 字符串启发式）。
  */
 function monthWithinScope(month: string, scope: Set<string>): boolean {
   if (scope.has(month)) return true;
-  if (!month.includes('~')) return false;
-  const [start, end] = month.split('~');
-  if (!start || !end) return false;
-  const months = parseMonthRange(`${start} ~ ${end}`);
-  return months.length > 0 && months.every((item) => scope.has(item));
+  const period = parsePeriod(month);
+  if (period.kind === 'month') return scope.has(period.month);
+  if (period.kind === 'window' || period.kind === 'year') {
+    return periodMonths(period).every((item) => scope.has(item));
+  }
+  return false;
 }
 
 /** 按声明的渠道范围裁剪渠道与渠道画像。 */

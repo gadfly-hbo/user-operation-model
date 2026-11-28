@@ -31,5 +31,5 @@ export type {
   PriceConditionOp,
 } from './match/config.js';
 export { scoreMatch } from './match/kernel.js';
-export { resolveUnitPrice, resolveRetailAmount, type ResolvedUnitPrice } from './match/price.js';
+export { resolveUnitPrice, resolveRetailAmount, type ResolvedUnitPrice, type UnitPriceInput } from './match/price.js';
 export { toMatchPortraitInput } from './match/portrait-input.js';
