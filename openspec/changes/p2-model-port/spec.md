@@ -163,6 +163,7 @@ tsconfig.json                        # 登记新包 references
 scripts/**                           # 校验与管线入口：fidelity-v04 / v06-pipeline / verify-modelevol-provenance（2026-11-28 用户追认）
 package.json  package-lock.json  .gitignore   # 根脚本登记（test:fidelity-v04 / pipeline:v06）、新增工作区包的锁文件必然变化（S10 追认）与 models/ 忽略（2026-11-28 追认）
 docs/match-model-baseline.md         # 冻结基线与门槛结论记录（2026-11-28 追认）
+docs/engineering-workflow.md         # 仅 §7.1 增「款号口径」一行（2026-11-28 用户裁定 S7）
 openspec/changes/p2-model-port/**
 ```
 

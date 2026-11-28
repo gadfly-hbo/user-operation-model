@@ -759,13 +759,13 @@ npm test                    # 含黄金用例与字节一致用例（合成夹�
 | **S6** tool2 单一求解器／单一指标结构守卫 | **PASS（已加）** | `pipeline-v06.test.ts`「tool2 包级结构守卫」：递归扫描 `packages/tool2-portrait-predict/src/**/*.ts`，禁 `invertMatrix|gaussJordan|adjugate|cofactor|Math.log2|function (cosineSimilarity|jsSimilarity|fitRidge|predictRidge|choleskyFactor|solveCholesky)`；`@uom/core/*` 导入只允许 `model|normalize` 子路径（复核变异 4 的「新建 ridge-local」今后被此守卫抓住） |
 | **S8** 状态词 | **PASS（已改）** | §1 P2-9「部分完成」改为按子项 `PASS`；全文状态只用 `PASS/FAIL/NOT_RUN/UNKNOWN/NOT_PROVED` |
 | **S9** folds 分层键裁定 | **PASS（已闭合）** | §8 第 15 条改「已追认（主 agent，2026-11-28：冻结输入分组用途，非预测特征）」 |
-| **S7／S10／S11** | **未处理（留主 agent／用户）** | S7 款号是否属业务数据的统一口径、S10 `package-lock.json` 入 §6 追认、S11 V11 弱断言——超出本修单授权，见 §14.5 |
+| **S7／S10／S11** | **S7 已裁定、S10 已追认、S11 记建议不改** | S7：用户 2026-11-28 裁定「款号只是标识符、不属业务数据」，口径写入工程规范 §7.1，溯源文档自述同步（`df19ca0` 之后的提交）；S10：`package-lock.json` 已补进 spec §6；S11：V11 弱断言无害，留作建议 |
 
 ### 14.5 仍需主 agent／用户处理
 
 1. **独立复核者重验受影响范围**（工程规范 §5.1：作者修复后由复核者重验）：§9.2 三层守卫（B4）、V4／V10／V12（B2/B3/S3/S4）、v0.4 夹具与归档内容守卫（B1）、S1 取值集合、S5 URL 守卫、v2 登记一致性。
 2. **spec §2.4 的 S1 修正与 spec §6 的 S10 追认**（`package-lock.json`）：spec 改动在工作树内（主 agent 已起草 §2.4），由主 agent 提交；S10 未动。
-3. **S7 口径**：款号（及 tool1 既有品牌/店铺常量）是否属「业务数据」请用户统一口径。
+3. **S7 口径**：已由用户 2026-11-28 裁定——款号只是标识符、不属业务数据；tool1 既有品牌／店铺常量沿用同一口径，已写入工程规范 §7.1。
 4. **v1 的处置**：v1（Staging）保持不动；是否 archive v1 由用户决定（本修单不做任何 Stage 变更）。
 5. 断网 e2e 与黄金 G1–G5：**NOT_RUN**（工作树无真实业务数据／无 `UOM_REFERENCE_ROOT`；本轮未触及匹配内核，`ridge.ts` 本轮无改动）。
 
