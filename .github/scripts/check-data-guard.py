@@ -19,6 +19,12 @@ FORBIDDEN_DIRS = {"data", "raw", "mlruns", "mlflow-artifacts", ".local"}
 # 业务数据目录内允许入库的说明文件（不含任何数据）
 ALLOWED_IN_DATA = {("data", "README.md")}
 
+# 显式白名单（data-templates DT4）：数据模板包是 tracked 交付物，内容由
+# scripts/build-data-templates.mjs 从代码契约（packages/core/src/normalize/catalog/）
+# 全合成生成（款号 SYN-…、演示店铺／品牌、通用枚举值），无任何真实业务数据。
+# 只放行下面这一个路径，不放宽其它任何规则。
+ALLOWED_TRACKED_FILES = {"templates/数据模板.xlsx"}
+
 # 单文件大小上限（字节）
 MAX_FILE_BYTES = 5 * 1024 * 1024
 
@@ -39,6 +45,9 @@ def main() -> int:
         suffix = Path(path).suffix.lower()
 
         if parts[:2] in ALLOWED_IN_DATA or parts in ALLOWED_IN_DATA:
+            continue
+
+        if path in ALLOWED_TRACKED_FILES:
             continue
 
         for forbidden in FORBIDDEN_DIRS:
