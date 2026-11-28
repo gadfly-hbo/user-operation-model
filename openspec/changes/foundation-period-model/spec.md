@@ -125,3 +125,10 @@ openspec/changes/foundation-period-model/**
 - **无月份画像在各工具间统一为「最低层可用」**：与 `selectPortrait`／`list_channels` 同口径，带 month 的 `get_product_dossier`／`search_by_tag`／`get_portrait_aggregate`／`get_competitor_portrait` 不再把无月份画像排除，命中带 `match: "unknown"`（复核建议 2 升级为应修；同一款此前会出现 portrait 有结果而 dossier 报 month-mismatch）。
 - **歧义与缺失提示的可用期间不得是入参校验拒绝的值**：hint 按 `selection.reason` 分支（平台歧义提示传 platform），单月标签直接列为可用月份，区间／年份标签写「须为落在该期间内的自然月」（复核应修-1、应修-2）。
 - **`platform: ''` 视为未指定、带首尾空白的 `month` 按规范月查找**：core 公共 API 与 MCP 层判定一致（复核应修-3、应修-4）。
+
+## v0.4（2026-11-28 第二轮独立复核后修正）
+
+第二轮独立复核（`.local/review-slice-a/round2/review-round2.md`，结论 PASS 附带条件）后由主 agent 发单修正，只追加，不改上方原文。
+
+- **v0.3 的「带首尾空白的 `month` 按规范月查找」作废，改为严格校验**：所有对外入口（MCP 工具入参、工具1 命令行 `--month`、core 的 `selectPortrait`）的 `month` 必须恰好是 `YYYY-MM`（四位年、连字符、两位月 01–12），由 `isNaturalMonth` 的严格正则统一判断（单一来源）：**不裁首尾空白**（`"2026-10 "`、`" 2026-10"` 拒绝）、**不接受 `YYMM`**（`"2610"` 拒绝）、不接受区间／年份标签，不合规一律拒绝（core `invalid-month`、MCP `invalid-argument`、工具1 非零退出且不产生产物）。理由：v0.3 的取法只做在 `selectPortrait` 内部，边界层（`readMonth`／`readRequiredMonth`／`validateMonthOption`）仍原样透传原串，按月键查找（经营指标／漏斗／渠道成交）与单价解析全部静默落空——第一轮的可见 `month-mismatch` 变成静默错误（复核 N1，一轮回归）。`parsePeriod` 的宽松解析（`2610`→`2026-10`、`2024`→全年区间）**不变**，只用于画像标签与导出文件名；`periodCovers` 的入参判定同步收紧（`2610`、带空白写法一律 false）。
+- **采纳 S1，写明 YYMM 优先的已知碰撞窗口**：四位数字先按 `YYMM` 解（与 `identity.ts` 既有口径一致），故 **2001–2012、1901–1912 这些年份的年导出标签会被解成月份**（实测还含 2101–2112），轮空到全年区间分支的只有 `1900`、`1913`–`1999`、`2013`–`2099`、`2100`；属既定取法的已知碰撞，非缺陷。已写入 `docs/normalize-rules.md` §2.1。

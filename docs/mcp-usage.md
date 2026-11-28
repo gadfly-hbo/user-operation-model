@@ -97,9 +97,9 @@ UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
 | --- | --- |
 | `not-found` | 实体不在索引中 |
 | `month-mismatch` | 实体存在，但该月无画像（列出可用月份） |
-| `ambiguous` | 实体有多份画像无法唯一确定：跨月多份时列出可用月份、提示传 `month`；同月多平台时列出平台、提示传 `platform`（compare 两侧为 `productPlatform`／`channelPlatform`） |
+| `ambiguous` | 实体有多份画像无法唯一确定：跨月多份时列出可用月份、提示传 `month`；同月多平台时列出平台、提示传 `platform`（compare 两侧为 `productPlatform`／`channelPlatform`）。候选含**无月份画像**时按形态措辞（第二轮复核修正）：候选全无月份且平台多于一个 → 提示传 `platform`；单平台多月、或无月份与有月份混合 → 提示传 `month`，message 不说「在某月有多平台画像」；成员聚合的候选全无月份时提示「传任意月份（YYYY-MM）即可聚合」 |
 | `data-not-ready` | 该工具的数据源未接入 |
-| `invalid-argument` | 参数不合法。`month` 不是自然月 `YYYY-MM`（含区间标签、`2026-13`、`2026-1`）时返回此类，message 形如 `month 必须是 YYYY-MM，收到 …`；所有接受 `month` 的工具都先校验再查数据（`month` 传**空串按未传处理**） |
+| `invalid-argument` | 参数不合法。`month` 不是自然月 `YYYY-MM`（含区间标签、`2026-13`、`2026-1`）时返回此类，message 形如 `month 必须是 YYYY-MM，收到 …`；所有接受 `month` 的工具都先校验再查数据（`month` 传**空串按未传处理**）。校验是**严格判断**（第二轮复核修正）：**不裁首尾空白**（`"2026-10 "` 拒绝）、**不接受 `2610` 等 YYMM 写法**（`2610` 只在画像标签／文件名里按月份解，不是入参写法）——避免这类写法在按月键查找时静默返回空指标 |
 
 **空结果与数据缺失严格区分**：数据未就位时返回 `data-not-ready` 并指明缺哪个文件，**不返回空数组**。
 
