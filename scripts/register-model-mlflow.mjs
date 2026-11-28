@@ -17,6 +17,7 @@
  *   7. updateRun FINISHED；读回 Registry 核对 Stage 与包字节
  *
  * 登记前置校验（fail-closed，任一不过即退出非 0、run 置 FAILED）：
+ *   - `--url`／`MPS_MLFLOW_URL` 必须是本机回环（127.0.0.1／localhost／::1，复核修单 S5）；
  *   - 包恰好 3 文件（predict.mjs / manifest.json / README.md）；
  *   - `formatVersion === 1`、`model.stage === 'Staging'`；
  *   - `manifest.gateConclusion` 存在且与管线产物（`models/work-v06/`）一致——门槛未过必须如实入账；
@@ -36,7 +37,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -116,6 +117,21 @@ async function mlflowApi(url, path, body, method = 'POST') {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const mlflowRoot = resolveMlflowRoot(args.mlflowRoot);
+
+  // ---- 复核修单 S5：登记地址只允许本机回环（在任何请求发出之前） ----
+  let assertLoopbackMlflowUrl;
+  try {
+    ({ assertLoopbackMlflowUrl } = await import(
+      pathToFileURL(join(REPO_ROOT, 'packages/tool2-portrait-predict/dist/src/register/url-guard.js')).href
+    ));
+  } catch {
+    fail('无法加载 url-guard（请先 npm run build）——登记地址守卫缺位时拒绝登记（fail-closed）');
+  }
+  try {
+    assertLoopbackMlflowUrl(args.url);
+  } catch (error) {
+    fail(error.message);
+  }
 
   // ---- 登记前置校验（fail-closed） ----
   const missing = PACKAGE_FILES.filter((file) => !existsSync(join(args.packageDir, file)));
