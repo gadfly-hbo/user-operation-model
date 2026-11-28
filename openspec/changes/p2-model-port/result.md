@@ -31,7 +31,7 @@
 | P2-9 | 文档与 result | **PASS**（本轮交付物齐全：本文件 + 溯源文档 + 基线文档 + 门槛结论入档 + 复核修单章 §14；复核 S8 状态词已改用标准词汇） | — | 后续文档维护随修复轮进行 |
 | P2-10 | 全量检查 | 见 §7（含各复核修单轮的检查记录；断网自检 NOT_RUN，原因见 §7／§13.4） | M11 / M13 | 见 §7／§13.4 |
 | P2-11 | 独立复核 | **四轮完成：第一轮 FAIL → 修单 §14 → 第二轮 PASS（应修 2）→ 修单 §15 → 第三轮 FAIL（阻断 B-1 文档断链，已随 `568777e` 关闭；应修 R3-S1／S2／S3）→ 修单 §15.5 → 第四轮 PASS、无阻断、建议进 PR**（四轮均由未参与候选的 `SDD·TDD 独立复核者` 完成；复核结论以复核者报告为准，不因本表自述而改变） | — | [review-p2.md](review-p2.md)、[review-p2-round2.md](review-p2-round2.md)、[review-p2-round3.md](review-p2-round3.md)、[review-p2-round4.md](review-p2-round4.md) |
-| P2-12 | PR / CI / squash 合并 | **NOT_RUN** | — | 本轮不 push、不开 PR |
+| P2-12 | PR / CI / squash 合并 | **完成** | — | PR #6；CI 两项全绿（校验／数据不出网守卫）；用户授权后 squash 合并 `main` @ `a506dc6`；远端／本地分支与工作树已删（删前 `git diff work/p2-model-port origin/main` 为空）；`.local/p2` 证据日志与 `models/` 模型包保留在主仓 gitignore 区 |
 | P2-13 | 用户数据到位后生产重训 | **NOT_RUN** | M07 | 等 P0 数据 |
 
 ## 2. P2-2 固化与溯源（M01 / M13）
