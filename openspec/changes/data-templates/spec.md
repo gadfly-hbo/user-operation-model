@@ -75,6 +75,7 @@ package.json                              # 仅 scripts 增 templates:build
 packages/core/src/normalize/catalog/**    # 固化 B/C 组契约
 packages/core/test/**                     # 防漂移与一致性测试
 .github/scripts/check-data-guard.py       # 仅显式放行 templates/数据模板.xlsx
+.gitignore                               # 仅增 !templates/数据模板.xlsx 例外（主 agent 追认，避免 git add -f 绕过全局 *.xlsx）
 docs/data-request.md  data/README.md  docs/normalize-rules.md
 openspec/changes/data-templates/**
 ```

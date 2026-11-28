@@ -12,6 +12,9 @@ raw/
 !fixtures/**/*.csv
 !fixtures/**/*.xlsx
 
+# 例外：业务侧数据模板包（表头由代码契约生成、示例全合成、不含真实数据）允许进仓库
+!templates/数据模板.xlsx
+
 # MLflow 本地账本与工件库
 workspace/mlflow/
 mlruns/
