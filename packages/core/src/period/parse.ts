@@ -86,14 +86,38 @@ export function isNaturalMonth(label: string): boolean {
 }
 
 /**
+ * 把画像的月份标签说成人能使用的 `month` 入参提示（复核应修-2）。
+ *
+ * 画像标签可能是区间或年份，直接把它们列成「可用月份」会诱导调用方传回
+ * 入参校验拒绝的值。单月标签直接列出；区间／年份标签写成
+ * 「month 须为落在 `<标签>` 内的自然月（YYYY-MM）」；unknown 标签不可用，不列出。
+ */
+export function describeAvailablePeriods(labels: string[]): string {
+  const months: string[] = [];
+  const ranges: string[] = [];
+  for (const label of [...new Set(labels)].sort()) {
+    const period = parsePeriod(label);
+    if (period.kind === 'month') months.push(period.month);
+    else if (period.kind === 'window' || period.kind === 'year') ranges.push(period.label);
+  }
+  const parts: string[] = [];
+  if (months.length > 0) parts.push(`可用月份：${months.join('、')}`);
+  if (ranges.length > 0) {
+    parts.push(`区间／年份画像：month 须为落在 ${ranges.join('、')} 内的自然月（YYYY-MM）`);
+  }
+  return parts.length > 0 ? parts.join('；') : '没有可作为 month 的画像期间';
+}
+
+/**
  * 期间是否覆盖给定自然月 `YYYY-MM`。unknown 不覆盖任何月。
  *
  * `month` 必须是自然月写法（复核修正）：`2024-1`、`2610` 这类非自然月
  * 一律返回 false，不做字典序或写法层面的猜测比较；首尾空白按规范写法处理。
  */
 export function periodCovers(period: Period, rawMonth: string): boolean {
-  if (!isNaturalMonth(rawMonth)) return false;
-  const month = parsePeriod(rawMonth).month;
+  const parsed = parsePeriod(rawMonth);
+  if (parsed.kind !== 'month') return false;
+  const month = parsed.month;
   switch (period.kind) {
     case 'month':
       return period.month === month;

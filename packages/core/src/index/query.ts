@@ -9,7 +9,6 @@ import {
   jensenShannonDistance,
   toDistribution,
 } from './similarity.js';
-import { parsePeriod, periodCovers } from '../period/parse.js';
 import {
   portraitLabelCovers,
   portraitMatchKind,
@@ -221,9 +220,11 @@ export function searchByTag(
   const hits: TagHit[] = [];
   for (const portrait of index.portraits) {
     if (scope !== 'all' && portrait.entityType !== scope) continue;
+    // 与 selectPortrait／list_channels 同一口径（复核建议 2 升级）：
+    // 无月份画像任何月都可作为最低层命中（match 为 unknown）
     if (
       params.month !== undefined &&
-      !periodCovers(parsePeriod(portrait.month), params.month)
+      !portraitLabelCovers(portrait.month, params.month)
     ) {
       continue;
     }
@@ -380,7 +381,8 @@ export function aggregatePortrait(
       return selection.status === 'found' ? [selection.portrait] : [];
     }
     const month = params.month;
-    return own.filter((portrait) => periodCovers(parsePeriod(portrait.month), month));
+    // 与 selectPortrait 同一口径（复核建议 2 升级）：无月份画像按最低层纳入
+    return own.filter((portrait) => portraitLabelCovers(portrait.month, month));
   });
   if (memberPortraits.length === 0) return undefined;
 

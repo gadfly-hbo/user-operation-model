@@ -343,7 +343,7 @@ describe('现状不变性：其余工具与 main 基线一致', () => {
         error: {
           kind: 'month-mismatch',
           message: '渠道 D00001 在 2020-01 无画像',
-          hint: '可用月份：2025-07~2026-06',
+          hint: '区间／年份画像：month 须为落在 2025-07~2026-06 内的自然月（YYYY-MM）',
         },
       },
     },

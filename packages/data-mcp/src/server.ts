@@ -5,6 +5,7 @@ import {
   availableMonths,
   channelEntityIds,
   compareProductChannel,
+  describeAvailablePeriods,
   DIAGNOSIS_TYPE_ALIASES,
   findChannel,
   findProduct,
@@ -12,8 +13,8 @@ import {
   isNaturalMonth,
   listChannels,
   listProducts,
-  parsePeriod,
-  periodCovers,
+  portraitLabelCovers,
+  portraitMatchKind,
   portraitPlatform,
   resolveChannelIds,
   searchByTag,
@@ -114,22 +115,27 @@ export function createServer(index: DataIndex): McpServer {
     if (selection.status === 'found') return { portrait: selection.portrait };
     if (selection.status === 'ambiguous') {
       const platformParam = query.platformParam ?? 'platform';
-      if (selection.months.length > 1) {
-        const suffix =
-          selection.platforms.length > 1 ? `；平台：${selection.platforms.join('、')}` : '';
+      // hint 按 reason 分支（复核应修-1）：平台歧义提示传 platform，
+      // 跨月歧义提示传 month；同月多平台（reason=month 且只涉及一个月）的
+      // 消歧入口同样是 platform（SA-03 主路径）。
+      const monthHint = selection.months.length === 1 || selection.reason === 'platform';
+      if (monthHint) {
+        const monthLabel = selection.reason === 'platform'
+          ? query.month ?? selection.months[0] ?? ''
+          : selection.months[0] ?? '';
         return {
           error: err(
             'ambiguous',
-            `${query.label} 有多份画像（月份：${selection.months.join('、')}${suffix}）`,
-            `传 month 参数（可用月份：${selection.months.join('、')}）`,
+            `${query.label} 在 ${monthLabel} 有多平台画像（平台：${selection.platforms.join('、')}）`,
+            `传 ${platformParam} 参数消歧（可选平台：${selection.platforms.join('、')}）`,
           ),
         };
       }
       return {
         error: err(
           'ambiguous',
-          `${query.label} 在 ${selection.months[0] ?? ''} 有多平台画像（平台：${selection.platforms.join('、')}）`,
-          `传 ${platformParam} 参数消歧（可选平台：${selection.platforms.join('、')}）`,
+          `${query.label} 有多份画像（月份：${selection.months.join('、')}${selection.platforms.length > 1 ? `；平台：${selection.platforms.join('、')}` : ''}）`,
+          `传 month 参数（${describeAvailablePeriods(selection.months)}）`,
         ),
       };
     }
@@ -144,7 +150,7 @@ export function createServer(index: DataIndex): McpServer {
         error: err(
           'month-mismatch',
           `${query.label} 在 ${query.month} 无画像`,
-          `可用月份：${months.join('、')}`,
+          describeAvailablePeriods(months),
         ),
       };
     }
@@ -152,7 +158,7 @@ export function createServer(index: DataIndex): McpServer {
       error: err(
         'not-found',
         `${query.label} 没有可唯一确定的画像`,
-        `可用月份：${months.join('、')}`,
+        describeAvailablePeriods(months),
       ),
     };
   };
@@ -334,18 +340,32 @@ export function createServer(index: DataIndex): McpServer {
           '工具 get_competitor_portrait 暂不可用',
         );
       }
-      const matched = portraits.filter((portrait) => {
-        if (month && portrait.month !== month) return false;
-        return matchesEntityName(portrait.entityId, brand);
-      });
+      // month 走与其它工具同源的覆盖规则（复核应修-6）：区间／年份画像覆盖该月
+      // 即命中；无月份画像作为最低层保留，match 为 unknown
+      const byBrand = portraits.filter((portrait) => matchesEntityName(portrait.entityId, brand));
+      const matched =
+        month !== undefined
+          ? byBrand.filter((portrait) => portraitLabelCovers(portrait.month, month))
+          : byBrand;
       if (matched.length === 0) {
         return err(
           'not-found',
-          `竞品 ${brand} 在索引中没有人群画像`,
+          month !== undefined
+            ? `竞品 ${brand} 在 ${month} 没有画像（可用期间：${describeAvailablePeriods(
+                availableMonths(index, 'competitor', byBrand.map((portrait) => portrait.entityId)),
+              )}）`
+            : `竞品 ${brand} 在索引中没有人群画像`,
           `已接入的竞品：${[...new Set(portraits.map((portrait) => portrait.entityId))].join('、')}`,
         );
       }
-      return ok({ brand, month: matched[0]?.month, portraits: matched });
+      return ok({
+        brand,
+        month: matched[0]?.month,
+        portraits: matched.map((portrait) => ({
+          ...portrait,
+          ...(month !== undefined ? { match: portraitMatchKind(portrait.month) } : {}),
+        })),
+      });
     },
   );
 
@@ -440,13 +460,16 @@ export function createServer(index: DataIndex): McpServer {
       const own = index.portraits.filter(
         (portrait) => portrait.entityType === 'product' && portrait.entityId === spu,
       );
+      // 与 selectPortrait／list_channels 同一口径（复核建议 2 升级）：
+      // 无月份画像任何月都可作为最低层命中，不再被 periodCovers 直接排除
       const selected = month
-        ? own.filter((portrait) => periodCovers(parsePeriod(portrait.month), month))
+        ? own.filter((portrait) => portraitLabelCovers(portrait.month, month))
         : own;
       const portraits = selected.map((portrait) => ({
         month: portrait.month,
         platform: portraitPlatform(portrait),
         projections: portrait.projections,
+        match: portraitMatchKind(portrait.month),
       }));
 
       // 带 month 时四类数据都只含覆盖该月的记录（SA-05）
@@ -486,7 +509,7 @@ export function createServer(index: DataIndex): McpServer {
         return err(
           'month-mismatch',
           `商品 ${spu} 在 ${month} 没有画像、经营指标、漏斗或渠道成交`,
-          `可用月份：${[...new Set([...portraitMonths, ...dataMonths])].sort().join('、')}`,
+          describeAvailablePeriods([...portraitMonths, ...dataMonths]),
         );
       }
 
@@ -587,7 +610,7 @@ export function createServer(index: DataIndex): McpServer {
           return err(
             'ambiguous',
             `成员 ${ambiguousMember.spu} 有多份画像（月份：${selection.months.join('、')}）`,
-            `传 month 参数（可用月份：${selection.months.join('、')}）`,
+            `传 month 参数（${describeAvailablePeriods(selection.months)}）`,
           );
         }
       }
@@ -702,8 +725,8 @@ export function createServer(index: DataIndex): McpServer {
           'not-found',
           `无法比较：商品 ${spu} 或渠道 ${channelId} 缺少对应画像`,
           [
-            productMonths.length ? `商品可用月份：${productMonths.join('、')}` : undefined,
-            channelMonths.length ? `渠道可用月份：${channelMonths.join('、')}` : undefined,
+            productMonths.length ? `商品侧：${describeAvailablePeriods(productMonths)}` : undefined,
+            channelMonths.length ? `渠道侧：${describeAvailablePeriods(channelMonths)}` : undefined,
           ]
             .filter(Boolean)
             .join('；'),

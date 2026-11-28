@@ -1,7 +1,7 @@
 import type { DataIndex } from '../index/types.js';
 import { platformId } from '../normalize/catalog/tables.js';
 import type { NormalizedPortrait } from '../normalize/types.js';
-import { isNaturalMonth, parsePeriod, periodCovers } from './parse.js';
+import { parsePeriod, periodCovers } from './parse.js';
 
 /**
  * 画像选择（切片 A · SA-02）。
@@ -109,10 +109,11 @@ export function selectPortrait(
   // 校验通过后以 parsePeriod 的规范月标签作为查找值，带首尾空白的写法等价于规范写法（复核修正）
   let month: string | undefined;
   if (query.month !== undefined) {
-    if (!isNaturalMonth(query.month)) {
+    const period = parsePeriod(query.month);
+    if (period.kind !== 'month') {
       return { status: 'invalid-month', month: query.month };
     }
-    month = parsePeriod(query.month).month;
+    month = period.month;
   }
   const ids = new Set(query.entityIds.filter((id) => id !== ''));
   let candidates = source.portraits.filter(

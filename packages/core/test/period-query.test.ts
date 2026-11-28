@@ -104,6 +104,42 @@ describe('similarProducts · month 选取（SA-03）', () => {
   });
 });
 
+describe('复核修正 · 无月份画像在带 month 查询中按最低层可用（run4）', () => {
+  /** 与 selectPortrait／list_channels 同一口径：无月份画像任何月都可作为最低层命中。 */
+  const WITH_UNKNOWN = {
+    portraits: [
+      mk('SPU-U', '', 'douyin', 0.7),
+      mk('SPU-M', '2026-10', 'douyin', 0.4),
+    ],
+    products: [
+      { spu: 'SPU-U', name: '商品U' },
+      { spu: 'SPU-M', name: '商品M' },
+    ],
+    channels: [],
+    months: ['2026-10'],
+    unavailable: {},
+    issues: [],
+  } as unknown as DataIndex;
+
+  test('searchByTag 带 month 命中无月份画像，match 为 unknown', () => {
+    const hits = searchByTag(WITH_UNKNOWN, {
+      dimension: 'gender',
+      label: '男',
+      month: '2026-05',
+    } as Parameters<typeof searchByTag>[1]);
+    const hitU = hits.find((hit) => hit.entityId === 'SPU-U');
+    assert.ok(hitU, '无月份画像不得被 month 过滤直接排除');
+    assert.equal(hitU?.match, 'unknown');
+    assert.equal(hits.find((hit) => hit.entityId === 'SPU-M'), undefined,
+      '不覆盖该月的画像仍被排除');
+  });
+
+  test('不传 month 时无月份画像照常命中', () => {
+    const hits = searchByTag(WITH_UNKNOWN, { dimension: 'gender', label: '男' });
+    assert.equal(hits.length, 2);
+  });
+});
+
 describe('验收修正一 · list_channels 按覆盖规则判断「该月有画像」', () => {
   /** 渠道画像覆盖形态：单月／区间／年份各一份。 */
   const CHANNEL_INDEX = {
