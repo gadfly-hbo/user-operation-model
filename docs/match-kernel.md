@@ -1,6 +1,6 @@
 # 匹配内核口径与工具1 用法
 
-> P1 交付 · 2026-11-27 · 相关：[工程规范](engineering-workflow.md) · [产品讨论稿 §7.4](产品讨论稿-v0.1.md) · [P1 规格](../openspec/changes/tool1-match-kernel/spec.md) · [口径对照](match-calibration.md)
+> P1 交付 · 2026-11-27 · 相关：[工程规范](engineering-workflow.md) · [产品讨论稿 §7.4](产品讨论稿-v0.2.md) · [P1 规格](../openspec/changes/tool1-match-kernel/spec.md) · [口径对照](match-calibration.md)
 
 ## 1. 内核在哪、怎么用
 

@@ -1,7 +1,7 @@
 # 人群运营工作台 · UI 设计说明
 
 > 2026-11-27 · 配套原型：`site/web/index.html`（可点击、含 9 个页面与亮/暗主题）
-> 相关：[产品讨论稿](产品讨论稿-v0.1.md) · [工程规范](engineering-workflow.md) · [归一化规则](normalize-rules.md)
+> 相关：[产品讨论稿](产品讨论稿-v0.2.md) · [工程规范](engineering-workflow.md) · [归一化规则](normalize-rules.md)
 
 ---
 

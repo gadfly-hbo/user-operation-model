@@ -1,57 +1,87 @@
 # user-operation-model
 
-服饰零售「人-货-渠」人群运营模型的工程实现。
-
-把商品部的买手经验与会员数据部的算法预测放进同一套画像坐标系，做**背对背预测**与**面对面校对**，并用数据驱动全生命周期的货品调拨与人群运营。
+服饰零售「人-货-渠」人群运营模型的工程实现。产品形态是**人群运营工作台**：在本机把人、货、渠三侧画像放进同一套「标签维度 + 占比 + TGI」坐标系，支撑「背对背预测 → 面对面校对」的决策闭环。产品方向与范围见[产品讨论稿 v0.2](docs/产品讨论稿-v0.2.md)，开发流程见[工程规范](docs/engineering-workflow.md)。
 
 ## 当前状态
 
-**仓库仅含规范与设计文档，代码尚未启动。**
-
 | 交付物 | 状态 |
 | --- | --- |
-| [产品讨论稿 v0.1](docs/产品讨论稿-v0.1.md) | 已评审，D1／D2 两项架构决策已确认 |
-| [工程规范](docs/engineering-workflow.md) | v1.0，作为本项目开发流程的唯一详细来源 |
-| [变更记录机制](openspec/README.md) | 已建立，首个变更待 P0 启动时创建 |
-| 数据 MCP | 未开始（阻塞于数据源） |
-| 工具1／工具2 | 未开始 |
+| [产品讨论稿 v0.2](docs/产品讨论稿-v0.2.md) | 现行版本：人群运营工作台定为产品形态，D1–D12 决策已记录 |
+| [工程规范](docs/engineering-workflow.md) | v1.0，本项目开发流程的唯一详细来源 |
+| [架构梳理与重构方案](docs/architecture-review-v1.md) | 已入库；底座重构按六个切片推进，切片 A（时间与选择语义）已合并 |
+| 数据 MCP | 已交付：17 个工具（stdio）；哪些工具的数据未就位见 [docs/mcp-usage.md](docs/mcp-usage.md) |
+| 工具1（货渠匹配） | 已交付（P1）：共享匹配内核 + 静态看板 + 错配清单；权重未经真实数据校准 |
+| 工具2（画像预测） | 已交付：ModelEvol v0.4／v0.6 移植与 Staging 登记；科学门槛未过、不进生产（见 [docs/match-model-baseline.md](docs/match-model-baseline.md)）；按[讨论稿 D8](docs/产品讨论稿-v0.2.md) 应在工作台标「实验基线」，该呈现待后续切片落地 |
 | 留存与回购报表 | 未开始 |
+| 业务侧数据模板包 | 已交付：`templates/数据模板.xlsx`，由代码契约生成 |
+| 工作台 UI 原型 | 已交付：`site/web`（静态站点，合成演示数据），设计说明见 [docs/ui-design.md](docs/ui-design.md) |
 
 ## 三条需求
 
-1. **数据 MCP** —— 基于《零售服饰人群运营模型》「从消费者视角重新认识人、货、渠」，把渠道画像、货品画像、人群画像统一成同一套标签维度 + 占比 + TGI 的数据契约，暴露为本地可调用的 MCP
-2. **模型一：货与渠匹配** —— 工具1 走事实画像入口（抖音范式规则匹配），工具2 走预测画像入口（ModelEvol 范式可版本化模型），共享同一匹配内核
+1. **数据服务** —— 把渠道画像、货品画像、人群画像统一成同一套标签维度 + 占比 + TGI 的数据契约，经本地 MCP（stdio）暴露给 Agent 与工作台
+2. **模型一：货与渠匹配** —— 工具1 走事实画像入口（抖音范式规则匹配与看板），工具2 走预测画像入口（ModelEvol 范式可版本化模型），共享 `packages/core` 的唯一匹配内核
 3. **模型二：留存与回购** —— Cohort 留存、月度大盘人群结构、老客 Recency 穿透、跨渠道流转矩阵、三大诊断面板
+
+## 四条硬约束
+
+违反任一条即视为缺陷，不得以「先跑起来」放宽。
+
+1. **业务数据不出网** —— 原始导出、画像索引、成交数据、报表产物一律留在本机；MCP 走 stdio，本地服务只绑 `127.0.0.1`；CI 不接触任何真实数据
+2. **匹配内核唯一** —— 工具1／工具2 共用 `packages/core` 的评分实现，禁止复制第二份逻辑；改动须通过黄金校验用例
+3. **背对背隔离** —— 工具2 的预测路径不得读取商品部人工画像字段，预测输入仅限品类／版型／面料／工艺／价格带／季节／上新类型／IP 等客观属性
+4. **模型来源可溯** —— ModelEvol 只读参考、model-mlflow 只消费不改造；移植留来源标识，失败结论不继承；模型包精确版本锁定，Stage 以 Registry 为准
+
+详见[工程规范](docs/engineering-workflow.md)与 [AGENTS.md](AGENTS.md)。
 
 ## 仓库布局
 
 ```
 .
 ├── AGENTS.md                    # 工程入口
-├── docs/
-│   ├── 产品讨论稿-v0.1.md        # 产品方向、范围、架构决策
-│   ├── ui-design.md              # 工作台 UI 设计说明
-│   └── engineering-workflow.md  # 工程规范（流程唯一详细来源）
-├── site/
-│   └── web/                     # 工作台 UI 站点（可发布，静态无构建）
-├── openspec/
-│   ├── README.md                # 变更记录机制
-│   └── changes/<change-id>/     # 每项变更的 spec.md 与 result.md
-├── packages/                    # 代码包（P0 起逐步建立）
-│   ├── core/                    # 统一维度集、映射表、字段目录（数据契约的单一来源）
-│   ├── data-mcp/                # MCP server（stdio）
-│   ├── tool1-channel-match/     # 规则匹配与看板
-│   ├── tool2-model-match/       # 属性→画像→匹配，含 model-mlflow 消费
-│   └── reports/                 # 留存与回购报表集
-├── models/                      # 精确版本锁定的模型包（不放权重大文件）
-└── data/                        # 本地数据（gitignore，不上云）
+├── docs/                        # 工程规范、产品讨论稿 v0.2、架构梳理、口径与使用说明
+├── openspec/changes/            # 每项变更的 spec.md 与 result.md
+├── packages/
+│   ├── core/                    # 领域核心：数据契约、归一化、匹配内核（唯一评分实现）
+│   ├── data-mcp/                # 数据 MCP（stdio）
+│   ├── tool1-channel-match/     # 工具1：命令行 + 静态看板
+│   ├── tool2-portrait-predict/  # 工具2：ModelEvol 移植、训练管线与模型包导出
+│   ├── uom-services/            # 规划中：工具注册表 + 应用服务（底座切片 C）
+│   ├── workbench-server/        # 规划中：工作台服务（底座切片 D）
+│   └── reports/                 # 规划中：留存与回购报表（底座切片 F）
+├── scripts/                     # 黄金回归、模板生成、断网守卫等脚本
+├── site/web/                    # 工作台 UI 原型（静态、合成数据）
+├── templates/                   # 业务侧数据模板包（由代码契约生成）
+├── models/                      # 模型包（本地，不入库）
+└── data/                        # 本地数据（不入库）
 ```
 
 ## 本地开发
 
 ```bash
 npm install
-npm run check     # 类型检查 + 构建 + 单元测试
+npm run check        # 构建 + 全量测试
+
+# 工具1：合成数据演示报告
+npm run tool1 -- --demo --out output/tool1-demo.html
+
+# 数据 MCP（stdio；启动与客户端接入详见 docs/mcp-usage.md）
+npm run build
+UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
+
+# 业务侧数据模板包（由 packages/core 的代码契约生成）
+npm run templates:build
+```
+
+数据 MCP 运行期零网络请求、只读本地数据；`data/` 下的业务数据不入库、不出网。
+
+## 本地检查
+
+```bash
+npm run check                                     # 构建 + 全量测试
+npm run test:golden                               # 匹配内核黄金校验用例
+python3 .github/scripts/check-docs-links.py .     # 文档相对链接
+python3 .github/scripts/check-data-guard.py .     # 数据不出网守卫（检查 git 索引）
+npm run check:archive-content                    # 归档真实内容不入库守卫
 ```
 
 ## 扩展性约定
@@ -65,18 +95,7 @@ npm run check     # 类型检查 + 构建 + 单元测试
 | 调整年龄等分档边界 | `packages/core/src/portrait/catalog/age-bands.ts` | 否 |
 | 新增商品字段 | `packages/core/src/product/catalog/fields.ts` | 否 |
 
-运行时还可直接调用 `DimensionRegistry.register()`、`MappingTable.add()`、`FieldCatalog.add()` 动态追加。
-
 未在目录登记的内容不会被丢弃：商品档案的未知字段进入 `ProductDossier.extra`，画像的未映射标签保留在 `Portrait.platformLabels`。
-
-## 四条硬约束
-
-1. **业务数据不出网** —— 原始导出、画像索引、成交数据、报表产物全部留在本机；MCP 走 stdio；CI 不接触真实数据
-2. **匹配内核唯一** —— 工具1／工具2 共用 `packages/core`，禁止第二份评分逻辑
-3. **背对背隔离** —— 预测路径不得读取商品部人工画像字段，否则机制失效
-4. **模型来源可溯** —— ModelEvol 只读参考、model-mlflow 只消费不改造，失败结论不继承
-
-详见[工程规范](docs/engineering-workflow.md)与 [AGENTS.md](AGENTS.md)。
 
 ## 外部参考资产（只读）
 
@@ -86,34 +105,4 @@ npm run check     # 类型检查 + 构建 + 单元测试
 | ModelEvol 归档 | `~/Dev/Archive/ModelEvol` | 工具2 的模型设计与训练管线来源 |
 | model-mlflow | `~/Dev/Projects/model-mlflow` | 模型治理账本与模型包来源 |
 
-## 数据 MCP
-
-```bash
-npm run build
-UOM_DATA_ROOT=data node packages/data-mcp/dist/src/bin.js
-```
-
-stdio 传输、零网络请求、只读本地数据。17 个工具，其中 **9 个**已接入真实数据、**8 个**的数据源待补（返回明确错误并指明缺哪个文件；文件到位后自动可用，不用改代码）。详见 [docs/mcp-usage.md](docs/mcp-usage.md)。
-
-## UI 工作台
-
-工作台形态的可点击原型（9 个页面，静态站点，无构建无依赖、无外部请求）：
-
-```bash
-python3 -m http.server 8899 --directory site/web
-# http://127.0.0.1:8899/
-```
-
-设计说明见 [docs/ui-design.md](docs/ui-design.md)。视觉论点是「一张摊开的对账单」：人工画像（朱砂）与算法画像（靛蓝）各占一个色相，中间用差异谱把分歧显性化，右侧落决策。原型含**合成演示数据**，不含真实业务数据。
-
-旧版原型 `docs/ui-demo/` 已删除（2026-11-27），现行形态以 `site/web/` 与工具1 报告页为准。
-
-## 本地检查
-
-```bash
-# 文档相对链接
-python3 .github/scripts/check-docs-links.py .
-
-# 数据不出网守卫（检查 git 索引）
-python3 .github/scripts/check-data-guard.py .
-```
+未经用户授权不允许改造三方资产本体，只允许随官方版本升级（升级也要用户授权）。

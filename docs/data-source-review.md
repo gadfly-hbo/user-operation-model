@@ -2,7 +2,7 @@
 
 > 评估对象：`~/Desktop/待办/semir-mvp-samples`（12 个业务域，30 个文件，3.6 MiB）
 > 评估日期：2026-11-26
-> 关联：[P0 规格](../openspec/changes/data-mcp-core/spec.md) · [产品讨论稿 v0.1](产品讨论稿-v0.1.md)
+> 关联：[P0 规格](../openspec/changes/data-mcp-core/spec.md) · [产品讨论稿 v0.2](产品讨论稿-v0.2.md)
 >
 > **本报告只记录数据结构、字段名与标签体系，不记录任何业务数值、店铺名或经营数据。**
 
