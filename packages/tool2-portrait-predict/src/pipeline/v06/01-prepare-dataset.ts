@@ -11,9 +11,9 @@
  * ## 与归档的差异
  *
  * 1. **画像解析换同名求和版**：归档用 `lib/core.mts` 的覆盖式解析（丢份额），
- *    本移植改用 `packages/core/src/model/portrait-md.ts`（v0.7 同名求和语义）。
+ *    本移植改用 `packages/core/src/normalize/portrait-md.ts`（v0.7 同名求和语义）。
  * 2. **XLSX 解析换 exceljs**：归档用 `xlsx@0.18.5`（高危漏洞，不继承），
- *    本移植走 `packages/core/src/normalize/xlsx.ts`（exceljs，经 `model/xlsx-rows` 转发口引用）。
+ *    本移植走 `packages/core/src/normalize/xlsx.ts`（exceljs，`@uom/core/normalize/xlsx` 子路径直接引用）。
  * 3. **cwd 耦合 → 路径注入**：归档的路径是仓库根相对前缀，本移植全部由调用方注入。
  * 4. **样本排序改为码位序**：归档用 `sku.localeCompare`（受 locale 影响），
  *    本移植用码位比较（`<` / `>`），保证跨机器可复现（本数据集款号定长同宽，两者同序）。
@@ -31,8 +31,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { parsePortraitMd } from '@uom/core/model/portrait-md';
-import { readXlsxRows } from '@uom/core/model/xlsx-rows';
+import { parsePortraitMd } from '@uom/core/normalize/portrait-md';
+import { readXlsxRows } from '@uom/core/normalize/xlsx';
 
 import { projectV06CompliantInput } from './lib/features-v06.js';
 import {

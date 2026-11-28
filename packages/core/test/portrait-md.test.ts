@@ -17,7 +17,7 @@ import {
   parsePortraitMd,
   parsePortraitMdFile,
   portraitDistributionToObject,
-} from '../src/model/portrait-md.js';
+} from '../src/normalize/portrait-md.js';
 
 /** 合成画像文本：两个维度，其中一个维度含同名标签两行。 */
 const SAMPLE_TEXT = [

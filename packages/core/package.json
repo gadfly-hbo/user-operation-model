@@ -13,6 +13,10 @@
     "./model/*": {
       "types": "./dist/src/model/*.d.ts",
       "default": "./dist/src/model/*.js"
+    },
+    "./normalize/*": {
+      "types": "./dist/src/normalize/*.d.ts",
+      "default": "./dist/src/normalize/*.js"
     }
   },
   "scripts": {
