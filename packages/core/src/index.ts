@@ -1,4 +1,5 @@
 export * from './portrait/types.js';
+export * from './period/index.js';
 export { DimensionRegistry, MappingTable, BandResolver } from './portrait/registry.js';
 export { DIMENSIONS, CORE_DIMENSION_IDS } from './portrait/catalog/dimensions.js';
 export { TAG_MAPPINGS } from './portrait/catalog/mappings.js';

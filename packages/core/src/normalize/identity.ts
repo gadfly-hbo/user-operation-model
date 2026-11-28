@@ -82,7 +82,7 @@ export function parseMonthLabel(label: string): string | null {
  *
  * - `2507-2606森马广州越秀区北京路店-占比` → 实体「森马广州越秀区北京路店」，月份区间
  * - `款号101526100201` → 实体「101526100201」
- * - `2024_森马工联大厦购物中心店_天猫` → 实体「森马工联大厦购物中心店」，年份 `2024`
+ * - `2024_森马工联大厦购物中心店_天猫` → 实体「森马工联大厦购物中心店」，全年区间 `2024-01~2024-12`
  */
 export function parsePortraitEntityId(raw: string): { entityId: string; month?: string } | null {
   const text = raw.trim();
@@ -126,9 +126,9 @@ export function parsePortraitEntityId(raw: string): { entityId: string; month?: 
     if (month && segments[i + 1]) {
       return { entityId: stripEntityNoise(segments[i + 1]!), month };
     }
-    // 4 位年份段，如「2024_门店名_天猫」
+    // 4 位年份段，如「2024_门店名_天猫」：全年区间（R-7，年导出按近似口径标注）
     if (/^\d{4}$/.test(segment) && segments[i + 1]) {
-      return { entityId: stripEntityNoise(segments[i + 1]!), month: `${segment}-01` };
+      return { entityId: stripEntityNoise(segments[i + 1]!), month: `${segment}-01~${segment}-12` };
     }
   }
 
