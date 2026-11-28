@@ -272,6 +272,56 @@ describe('selectPortrait · 实体类型隔离与平台优先级', () => {
   });
 });
 
+describe('复核修正 · platform 空串与 month 首尾空白（run4）', () => {
+  test("platform: '' 等同未指定：同层多平台照常 ambiguous(platform)", () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-D'],
+      month: '2026-10',
+      platform: '',
+    });
+    assert.equal(result.status, 'ambiguous', '空串不得绕过平台歧义');
+    if (result.status === 'ambiguous') {
+      assert.equal(result.reason, 'platform');
+      assert.deepEqual(result.platforms, ['douyin', 'tmall']);
+    }
+  });
+
+  test("platform: '' 不带 month：多份照常 ambiguous(month)", () => {
+    const result = selectPortrait(SOURCE, { entityType: 'product', entityIds: ['SPU-A'], platform: '' });
+    assert.equal(result.status, 'ambiguous');
+    if (result.status === 'ambiguous') assert.equal(result.reason, 'month');
+  });
+
+  test("带首尾空白的 month 等价于规范写法（'2026-10 ' → found）", () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-SINGLE'],
+      month: '2026-10 ',
+    });
+    assert.equal(result.status, 'found', '校验通过后应按规范月标签查找');
+  });
+
+  test("前导空白的 month 同样命中（' 2026-09' → found(exact)）", () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-A'],
+      month: ' 2026-09',
+    });
+    assert.ok(result.status === 'found');
+    if (result.status === 'found') assert.equal(result.match, 'exact');
+  });
+
+  test('带空白的非法写法仍拒绝（2026-13 带空格 → invalid-month）', () => {
+    const result = selectPortrait(SOURCE, {
+      entityType: 'product',
+      entityIds: ['SPU-SINGLE'],
+      month: ' 2026-13 ',
+    });
+    assert.deepEqual(result, { status: 'invalid-month', month: ' 2026-13 ' });
+  });
+});
+
 describe('验收修正一 · month 入参必须是自然月', () => {
   test('区间标签当 month → invalid-month，不按重叠匹配放行', () => {
     const result = selectPortrait(SOURCE, {

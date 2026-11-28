@@ -12,8 +12,8 @@ const MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
 /** 区间标签 `YYYY-MM~YYYY-MM`。 */
 const WINDOW_PATTERN = /^(\d{4})-(\d{2})~(\d{4})-(\d{2})$/;
 
-/** 年份标签 `YYYY`。 */
-const YEAR_PATTERN = /^(\d{4})$/;
+/** 四位数字：先按 YYMM 月份解，月份分量非法时按四位年份解（复核修正）。 */
+const FOUR_DIGIT_PATTERN = /^(\d{4})$/;
 
 /** 期间类型。 */
 export type PeriodKind = 'month' | 'window' | 'year' | 'unknown';
@@ -54,10 +54,27 @@ export function parsePeriod(label: string): Period {
     }
   }
 
-  const year = YEAR_PATTERN.exec(text);
-  if (year) {
-    const value = year[1]!;
-    return { kind: 'year', label: `${value}-01~${value}-12`, start: `${value}-01`, end: `${value}-12` };
+  const four = FOUR_DIGIT_PATTERN.exec(text);
+  if (four) {
+    // 归一化规则 §2.1：YYMM 是月份写法（2610 → 2026-10），先于四位年份尝试。
+    // 与 normalize/identity.ts 的 parseMonthLabel 同一顺序。
+    const yymm = four[1]!;
+    const monthComponent = Number(yymm.slice(2, 4));
+    if (monthComponent >= 1 && monthComponent <= 12) {
+      const month = `20${yymm.slice(0, 2)}-${yymm.slice(2, 4)}`;
+      return { kind: 'month', label: month, month };
+    }
+    // 四位年份：限定 1900–2100，超出（含 0000／9999）一律 unknown，不猜测
+    const yearValue = Number(yymm);
+    if (yearValue >= 1900 && yearValue <= 2100) {
+      return {
+        kind: 'year',
+        label: `${yymm}-01~${yymm}-12`,
+        start: `${yymm}-01`,
+        end: `${yymm}-12`,
+      };
+    }
+    return { kind: 'unknown', label: text };
   }
 
   return { kind: 'unknown', label: text };
@@ -68,8 +85,15 @@ export function isNaturalMonth(label: string): boolean {
   return parsePeriod(label).kind === 'month';
 }
 
-/** 期间是否覆盖给定自然月 `YYYY-MM`。unknown 不覆盖任何月。 */
-export function periodCovers(period: Period, month: string): boolean {
+/**
+ * 期间是否覆盖给定自然月 `YYYY-MM`。unknown 不覆盖任何月。
+ *
+ * `month` 必须是自然月写法（复核修正）：`2024-1`、`2610` 这类非自然月
+ * 一律返回 false，不做字典序或写法层面的猜测比较；首尾空白按规范写法处理。
+ */
+export function periodCovers(period: Period, rawMonth: string): boolean {
+  if (!isNaturalMonth(rawMonth)) return false;
+  const month = parsePeriod(rawMonth).month;
   switch (period.kind) {
     case 'month':
       return period.month === month;

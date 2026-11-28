@@ -110,6 +110,45 @@ describe('periodCovers · 覆盖判定', () => {
   });
 });
 
+describe('复核修正 · 四位数字与 periodCovers 入参（run4）', () => {
+  test('四位数字先按 YYMM 解析（§2.1：2610 → 2026-10，2412 → 2024-12）', () => {
+    assert.deepEqual(parsePeriod('2610'), { kind: 'month', label: '2026-10', month: '2026-10' });
+    assert.deepEqual(parsePeriod('2412'), { kind: 'month', label: '2024-12', month: '2024-12' });
+  });
+
+  test('YYMM 月份分量非法时按四位年份解析（2024 → year）', () => {
+    assert.deepEqual(parsePeriod('2024'), {
+      kind: 'year',
+      label: '2024-01~2024-12',
+      start: '2024-01',
+      end: '2024-12',
+    });
+  });
+
+  test('0000 与 9999 不是合法期间 → unknown，不猜测', () => {
+    assert.equal(parsePeriod('0000').kind, 'unknown');
+    assert.equal(parsePeriod('9999').kind, 'unknown');
+  });
+
+  test('四位年份限定 1900–2100，月份分量非法才落到年份分支', () => {
+    assert.equal(parsePeriod('1899').kind, 'unknown', 'YYMM 分量非法且年份越界');
+    assert.equal(parsePeriod('1900').kind, 'year', '月份分量 00 非法 → 按年份 1900 解');
+    assert.equal(parsePeriod('2100').kind, 'year');
+    assert.deepEqual(parsePeriod('2101'), { kind: 'month', label: '2021-01', month: '2021-01' },
+      'YYMM 优先：2101 的月份分量 01 合法 → 2021-01，不是年份');
+  });
+
+  test('periodCovers 对非自然月入参一律 false（字典序不得误判）', () => {
+    const year = parsePeriod('2024');
+    assert.equal(periodCovers(year, '2024-1'), false, '"2024-1" 不是任何可识别期间');
+    assert.equal(periodCovers(parsePeriod('2026-10'), '2026-1'), false);
+    assert.equal(periodCovers(parsePeriod('2026-10'), '2026-13'), false);
+    assert.equal(periodCovers(parsePeriod('2026-10'), '2610'), true,
+      '2610 按 §2.1 规范为 2026-10，与该月相等');
+    assert.equal(periodCovers(parsePeriod('2026-10'), ''), false);
+  });
+});
+
 describe('periodMonths · 展开为具体月份', () => {
   test('单月展开为自身', () => {
     assert.deepEqual(periodMonths(parsePeriod('2026-10')), ['2026-10']);

@@ -103,9 +103,9 @@ describe('渠道查询', () => {
     const root = await createFixtureIndexRoot();
     const index = await buildIndex({ dataRoot: root });
     const all = listChannels(index);
-    const filtered = listChannels(index, { month: '2025-07~2026-06' });
+    const filtered = listChannels(index, { month: '2025-12' });
     assert.ok(all.length >= filtered.length);
-    assert.equal(filtered.length, 1, '只有演示账号1 有该月画像');
+    assert.equal(filtered.length, 1, '只有演示账号1 有覆盖 2025-12 的画像（区间 2025-07~2026-06）');
     assert.equal(filtered[0]?.channelId, 'D00001');
   });
 

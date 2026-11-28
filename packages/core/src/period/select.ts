@@ -79,6 +79,11 @@ export function portraitLabelCovers(label: string, month: string): boolean {
   return tierOfLabel(label, month) !== null;
 }
 
+/** 非空字符串才算指定了平台；空串等同未指定（复核修正，统一两处判定）。 */
+function specifiedPlatform(platform: string | undefined): string | undefined {
+  return platform !== undefined && platform !== '' ? platform : undefined;
+}
+
 /** 画像自身标签对应的匹配形态。 */
 function kindOf(portrait: NormalizedPortrait): PortraitMatchKind {
   return portraitMatchKind(portrait.month);
@@ -99,9 +104,15 @@ export function selectPortrait(
   source: PortraitSource,
   query: SelectPortraitQuery,
 ): SelectPortraitResult {
-  // month 必须是自然月（验收修正一）：区间标签、越界月份一律拒绝，不做任何查找
-  if (query.month !== undefined && !isNaturalMonth(query.month)) {
-    return { status: 'invalid-month', month: query.month };
+  const platform = specifiedPlatform(query.platform);
+  // month 必须是自然月（验收修正一）：区间标签、越界月份一律拒绝，不做任何查找；
+  // 校验通过后以 parsePeriod 的规范月标签作为查找值，带首尾空白的写法等价于规范写法（复核修正）
+  let month: string | undefined;
+  if (query.month !== undefined) {
+    if (!isNaturalMonth(query.month)) {
+      return { status: 'invalid-month', month: query.month };
+    }
+    month = parsePeriod(query.month).month;
   }
   const ids = new Set(query.entityIds.filter((id) => id !== ''));
   let candidates = source.portraits.filter(
@@ -109,14 +120,14 @@ export function selectPortrait(
   );
 
   // 指定平台：先在候选集上过滤（中文写法归一到平台标识再比较）
-  if (query.platform) {
-    const wanted = platformId(query.platform);
+  if (platform !== undefined) {
+    const wanted = platformId(platform);
     candidates = candidates.filter((portrait) => platformId(platformOf(portrait)) === wanted);
     if (candidates.length === 0) return { status: 'not-found' };
   }
 
   // 不带 month：恰一份 → found；多份 → ambiguous(month)
-  if (query.month === undefined) {
+  if (month === undefined) {
     if (candidates.length === 0) return { status: 'not-found' };
     if (candidates.length === 1) {
       return { status: 'found', portrait: candidates[0]!, match: kindOf(candidates[0]!) };
@@ -129,7 +140,6 @@ export function selectPortrait(
     };
   }
 
-  const month = query.month;
   // 带 month：按 exact＞window＞year＞unknown 取最优一层，**不回退到相邻月份**
   const scored = candidates
     .map((portrait) => ({ portrait, tier: tierOf(portrait, month) }))
@@ -144,7 +154,7 @@ export function selectPortrait(
   const tier = scored.filter((item) => item.tier === bestTier);
 
   // 指定了 platform：候选集已按平台过滤，同平台多份（重复文件）取索引顺序首份
-  if (query.platform !== undefined) {
+  if (platform !== undefined) {
     return { status: 'found', portrait: tier[0]!.portrait, match: bestTier };
   }
 
