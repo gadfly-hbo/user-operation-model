@@ -253,3 +253,25 @@
 | 断网 e2e／黄金脚本 | `npm run offline-check`／`npm run test:golden` | **NOT_RUN** | 同 §5：需真实 `data/`／参考资产授权；本轮未改解析器与评分内核任何文件 |
 
 证据位置：`.local/data-templates/fix-r2/`（`red-r2.log` RED 31 项 7 FAIL／24 PASS；`green-templates.log` 31/31；`check.log` 全量 485/485；`probe/` 为 RED 阶段 douyin 投影探针——无业务数据）。暂存清单仅含授权路径文件，`data/` 下仅 `README.md`。
+
+---
+
+## 11. 专项最终检查（工程规范 §5.3）
+
+**检查范围**：本变更及其接缝——模板生成脚本、catalog 契约（`legacy-formats.ts`）、防漂移与往返测试、守卫脚本的白名单与 xlsx 扫描、README／要数清单文档。不据此宣称未检查的既有实现已合规。
+**候选身份**：分支 `work/data-templates` @ `9a8f337`（本节入库提交在其后）；基线 `main` @ `14bc15c`；相对 main 差异 14 个文件。
+**检查者**：主 agent（规格起草与验收，**未参与实现**；三轮非作者复核见 [review.md](review.md)、[review-round2.md](review-round2.md)、[review-round3.md](review-round3.md)）。
+
+| 检查项 | 实际核对与证据位置 | 结论 |
+| --- | --- | --- |
+| 四点原则 | **Host 管环境**：模板是 tracked 静态文件，生成脚本本地运行、不读 `data/`、不出网。**Agent 自主执行**：`npm run templates:build` 一键重建，防漂移测试纳入 `npm run check`，无人工同步步骤。**复用第三方**：exceljs 为既有依赖，`package-lock.json` 零差异。**减少人的操作**：业务侧不再对照三份文档自建表头，按「表目录」填与另存即可；每表的文件名／格式／sheet 名规则精确到可照抄 | **通过** |
+| 数据不出网（§7） | 模板示例全合成：`check:archive-content` 抽取 xlsx 单元格比对 0 命中，复核者另以主仓真实数据做约 439 万 needle 比对 0 可疑；生成脚本不读 `data/`（grep 仅注释提及）；`check-data-guard.py` 与 `.gitignore` 各只放行该一个文件；新脚本无 `fetch`／`http` 调用 | **通过** |
+| 匹配内核唯一性（§9.1） | `packages/core/src/match/**` 零改动；黄金 G1–G5 本轮 **NOT_RUN**（内核未改） | **通过（黄金 NOT_RUN）** |
+| 背对背隔离（§9.2） | 不涉及预测路径：`packages/tool2-portrait-predict/**` 与模型代码零改动 | **通过（限范围）** |
+| 模型来源与版本（§8） | 不适用：无模型移植、模型包或账本交互 | **NOT_APPLICABLE** |
+| 人的操作 | 业务侧新增动作只有「填模板、按表目录命名另存」；命名规则的必要性有实测证据（复核者：不按规则会静默错挂、抖音不改列名会静默归到演示账号）；无读取审批、无配置维护 | **通过** |
+
+**发现的问题**：无阻断、无应修。第三轮 3 条建议**记录不修**：① `docs/data-request.md` 一处措辞与另两处不同字且不在 DT2 锁内；② 「使用说明」示例账号名与契约文案不同（D00002 写法）；③ 守卫只按 `.xlsx` 抽取，tracked `.xls` 会被跳过（当前无此文件且全局忽略，潜在缺口）。
+**未验证**：断网 e2e、黄金 G1–G5 **NOT_RUN**；**真实业务导出数据的往返 NOT_PROVED**（全部往返均在合成数据上完成）。
+
+**结论**：**通过（限 DT1–DT7）**。本节不代替阶段门禁、CI 与产品验收；因存在上述 NOT_RUN／NOT_PROVED 项，**不宣称真实数据往返已验证**。
