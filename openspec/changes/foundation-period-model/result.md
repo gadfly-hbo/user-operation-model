@@ -6,7 +6,7 @@
 
 - 执行分支：`work/foundation-period-model`（工作树 `.qoder/worktrees/agent-SDD-TDD-d0463d03`）
 - 基线：`d138592`（PR #7 合并后主干）
-- 候选 HEAD：`64bfd14`（`91bf1e4` 规格起，SA-01～SA-09 五个实现提交 + 本次验收修正三个提交）
+- 候选 HEAD（代码与文档收口）：`64bfd14`（`91bf1e4` 规格起，SA-01～SA-09 五个实现提交 + 本次验收修正三个提交）；本 result.md 以独立 chore 提交落在其后
 - 本次新增提交：
   - `9f2b033` fix: month 入参自然月校验、list_channels 覆盖规则与工具1 可用月份恢复自然月
   - `a0560e8` fix: 演示报告按 SA-06 公共标签口径重新生成并入库，附可重复等价比对脚本
