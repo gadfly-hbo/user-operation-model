@@ -71,6 +71,7 @@
 ```
 templates/**
 scripts/build-data-templates.mjs
+scripts/check-no-archive-content.mjs     # 仅扩展扫描到 xlsx 单元格文本（复核 S3；主 agent 追认）
 package.json                              # 仅 scripts 增 templates:build
 packages/core/src/normalize/catalog/**    # 固化 B/C 组契约
 packages/core/test/**                     # 防漂移与一致性测试
